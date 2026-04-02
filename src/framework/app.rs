@@ -208,12 +208,13 @@ async fn handle_connection(
     metrics: Arc<Metrics>,
     banner: Arc<String>,
 ) -> anyhow::Result<()> {
+    let local_addr = stream.local_addr()?;
     // Envoie le banner de bienvenue
     stream.write_all(format!("220 {}\r\n", banner).as_bytes()).await?;
 
     let (reader, mut writer) = stream.split();
     let mut buf_reader = BufReader::with_capacity(8 * 1024, reader);
-    let mut ctx = Context::new(peer_addr);
+    let mut ctx = Context::new(peer_addr, local_addr);
 
     loop {
         let mut line = String::new();

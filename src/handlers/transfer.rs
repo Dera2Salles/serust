@@ -1,20 +1,29 @@
 use crate::application::file_service::FileService;
 use crate::domain::user::User;
+use crate::domain::error::DomainError;
 use crate::framework::{
     context::Context,
     handler::{Handler, HandlerResult},
 };
 use async_trait::async_trait;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::time::timeout;
 use tracing::error;
 
 async fn get_data_stream(ctx: &mut Context) -> anyhow::Result<tokio::net::TcpStream> {
     if let Some(listener) = ctx.data_listener.take() {
-        let (stream, _) = listener.accept().await?;
-        Ok(stream)
+        // Wait for client to connect to the data port with a timeout
+        let result = timeout(Duration::from_secs(30), listener.accept()).await;
+        match result {
+            Ok(Ok((stream, _))) => Ok(stream),
+            Ok(Err(e)) => Err(anyhow::anyhow!("Accept error: {}", e)),
+            Err(_) => Err(anyhow::anyhow!("Timeout waiting for data connection")),
+        }
     } else if let Some(addr) = ctx.data_address.take() {
-        let stream = tokio::net::TcpStream::connect(addr).await?;
+        // Active mode connection
+        let stream = timeout(Duration::from_secs(30), tokio::net::TcpStream::connect(addr)).await??;
         Ok(stream)
     } else {
         Err(anyhow::anyhow!("No data connection established. Use PASV or PORT first."))
@@ -140,7 +149,14 @@ impl Handler for ListDirHandler {
 
         let entries = match self.files.list(&user, &cwd).await {
             Ok(e) => e,
-            Err(e) => { error!("LIST: {}", e); ctx.error(550, "Requested action not taken. File unavailable."); return Ok(()); }
+            Err(e) => { 
+                error!("LIST: {}", e); 
+                match e {
+                    DomainError::PermissionDenied => ctx.error(550, "Permission denied."),
+                    _ => ctx.error(550, "Requested action not taken. File unavailable."),
+                }
+                return Ok(()); 
+            }
         };
 
         ctx.write_line("150 Here comes the directory listing.");
@@ -187,9 +203,17 @@ impl Handler for NlstHandler {
         let user = make_user(ctx);
         let cwd = ctx.cwd.clone();
 
-        let entries = match self.files.list(&user, &cwd).await {
+        // NLST is a "names only" listing; return files only.
+        let files = match self.files.list_files(&user, &cwd).await {
             Ok(e) => e,
-            Err(e) => { error!("NLST: {}", e); ctx.error(550, "Requested action not taken."); return Ok(()); }
+            Err(e) => { 
+                error!("NLST: {}", e); 
+                match e {
+                    DomainError::PermissionDenied => ctx.error(550, "Permission denied."),
+                    _ => ctx.error(550, "Requested action not taken."),
+                }
+                return Ok(()); 
+            }
         };
 
         ctx.write_line("150 Here comes the file list.");
@@ -201,7 +225,7 @@ impl Handler for NlstHandler {
             Err(e) => { error!("NLST data connect: {}", e); ctx.error(425, "Can't open data connection."); return Ok(()); }
         };
 
-        for (name, _) in &entries {
+        for name in &files {
             let line = format!("{}\r\n", name);
             if let Err(_) = data_stream.write_all(line.as_bytes()).await {
                 ctx.error(426, "Connection closed; transfer aborted.");

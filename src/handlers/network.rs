@@ -21,15 +21,11 @@ impl Handler for PasvHandler {
                 let port = addr.port();
                 let p1 = port / 256;
                 let p2 = port % 256;
-                
-                // Dynamically get the local IP over the active logical network interface
-                let local_ip = match std::net::UdpSocket::bind("0.0.0.0:0") {
-                    Ok(s) => match s.connect("8.8.8.8:80") {
-                        Ok(_) => s.local_addr().map(|a| a.ip().to_string()).unwrap_or_else(|_| "127.0.0.1".to_string()),
-                        Err(_) => "127.0.0.1".to_string(),
-                    },
-                    Err(_) => "127.0.0.1".to_string(),
-                };
+
+                // Use the local address of the control connection (most accurate interface).
+                // Some clients (including our Flutter one) will ignore this IP anyway and
+                // connect to the control host for robustness behind NAT.
+                let local_ip = ctx.local_addr.ip().to_string();
                 let ip_str = local_ip.replace(".", ",");
                 
                 ctx.data_listener = Some(Arc::new(listener));

@@ -9,12 +9,13 @@ mod infrastructure;
 mod interface;
 mod middlewares;
 
-use application::{auth_service::AuthService, file_service::FileService};
+use application::{auth_service::AuthService, file_service::FileService, share_service::ShareService};
 use framework::{app::App, metrics::Metrics};
 use handlers::auth::{UserHandler, PassHandler};
-use handlers::info::{SystHandler, FeatHandler, TypeHandler, NoopHandler, QuitHandler};
+use handlers::info::{SystHandler, FeatHandler, TypeHandler, NoopHandler, QuitHandler, MlstHandler};
 use handlers::network::{PasvHandler, PortHandler};
 use handlers::dir::{DirHandler, CwdHandler, CdupHandler};
+use handlers::share::{ShareHandler, UnshareHandler, SharesHandler};
 use handlers::transfer::{
     StorHandler, RetrHandler, ListDirHandler, NlstHandler,
     MkdHandler, RmdHandler, DeleHandler,
@@ -22,6 +23,7 @@ use handlers::transfer::{
 };
 use infrastructure::{
     file_repository::FileRepository,
+    share_repository::ShareRepository,
     user_repository::UserRepository,
 };
 use middlewares::{
@@ -46,9 +48,11 @@ async fn main() -> anyhow::Result<()> {
 
     let user_repo = Arc::new(UserRepository::new("users.json").await);
     let file_repo = Arc::new(FileRepository::new("storage"));
+    let share_repo = Arc::new(ShareRepository::new("shares.json").await);
 
     let auth_service = Arc::new(AuthService::new(Arc::clone(&user_repo)));
-    let file_service = Arc::new(FileService::new(Arc::clone(&file_repo)));
+    let share_service = Arc::new(ShareService::new(Arc::clone(&share_repo)));
+    let file_service = Arc::new(FileService::new(Arc::clone(&file_repo), Arc::clone(&share_service)));
 
     for (name, pass) in [("alice", "alice123"), ("bob", "bob456"), ("carol", "carol789")] {
         let _ = auth_service.register(name, pass).await;
@@ -74,6 +78,7 @@ async fn main() -> anyhow::Result<()> {
         .route(TypeHandler)
         .route(NoopHandler)
         .route(QuitHandler)
+        .route(MlstHandler::new(Arc::clone(&file_service)))
         // ── Data connection ──
         .route(PasvHandler)
         .route(PortHandler)
@@ -93,6 +98,10 @@ async fn main() -> anyhow::Result<()> {
         .route(RnfrHandler)
         .route(RntoHandler::new(Arc::clone(&file_service)))
         .route(SizeHandler::new(Arc::clone(&file_service)))
+        // ── Sharing ──
+        .route(ShareHandler::new(Arc::clone(&share_service)))
+        .route(UnshareHandler::new(Arc::clone(&share_service)))
+        .route(SharesHandler::new(Arc::clone(&share_service)))
         .run("0.0.0.0:8080")
         .await
 }

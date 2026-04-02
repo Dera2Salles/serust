@@ -48,6 +48,8 @@ impl Extensions {
 pub struct Context {
     /// Adresse du client distant.
     pub peer_addr: SocketAddr,
+    /// Adresse locale du serveur (côté socket de contrôle).
+    pub local_addr: SocketAddr,
     /// Extensions typées (auth, rate-limit, custom state…).
     pub extensions: Extensions,
     /// Buffer de réponse : les handlers écrivent ici, le framework flush ensuite.
@@ -60,9 +62,10 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn new(peer_addr: SocketAddr) -> Self {
+    pub fn new(peer_addr: SocketAddr, local_addr: SocketAddr) -> Self {
         Self {
             peer_addr,
+            local_addr,
             extensions: Extensions::new(),
             response: Vec::with_capacity(256),
             cwd: "/".to_string(),
