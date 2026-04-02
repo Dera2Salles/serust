@@ -1,0 +1,15 @@
+{
+  "settingsTitle": "Paramètres",
+  "themeTitle": "Thème",
+  "themeSubtitle": "Choisissez votre couleur préférée",
+  "languageTitle": "Langue",
+  "languageSubtitle": "Sélectionnez la langue de l'application",
+  "languageEnglish": "Anglais",
+  "languageFrench": "Français",
+  "homeTitle": "Accueil",
+  "sendTitle": "Envoyer",
+  "receiveTitle": "Recevoir",
+  "historyTitle": "Historique",
+  "recentTransfers": "Transferts récents",
+  "shareConfidence": "Partagez en toute confiance"
+}

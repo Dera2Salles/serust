@@ -3,12 +3,12 @@
     "username": "bob",
     "password_hash": "ed4d9437294706c60027d39427f6f5850870625544bb77722aac19f97495b2b7"
   },
-  "carol": {
-    "username": "carol",
-    "password_hash": "dae1889176856be72020e4f0e100d4baa7fbbc95c513b585fb30b99e56fd98d5"
-  },
   "alice": {
     "username": "alice",
     "password_hash": "4e40e8ffe0ee32fa53e139147ed559229a5930f89c2204706fc174beb36210b3"
+  },
+  "carol": {
+    "username": "carol",
+    "password_hash": "dae1889176856be72020e4f0e100d4baa7fbbc95c513b585fb30b99e56fd98d5"
   }
 }
