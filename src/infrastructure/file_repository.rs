@@ -82,23 +82,9 @@ impl FileRepository {
     }
 
     /// Legacy: list only file names (kept for backward compat).
-    pub async fn list_files(&self, username: &str, rel_path: &str) -> Result<Vec<String>, DomainError> {
-        let entries = self.list_entries(username, rel_path).await?;
+    pub async fn list_files(&self, username: &str) -> Result<Vec<String>, DomainError> {
+        let entries = self.list_entries(username, "").await?;
         Ok(entries.into_iter().filter(|(_, is_dir)| !is_dir).map(|(n, _)| n).collect())
-    }
-
-    /// Returns (size_bytes, is_dir) for an entry, or `Ok(None)` if it doesn't exist.
-    pub async fn stat(
-        &self,
-        username: &str,
-        rel_path: &str,
-    ) -> Result<Option<(u64, bool)>, DomainError> {
-        let path = self.user_path(username, rel_path);
-        if !path.exists() {
-            return Ok(None);
-        }
-        let meta = fs::metadata(&path).await?;
-        Ok(Some((meta.len(), meta.is_dir())))
     }
 
     pub async fn create_dir(&self, username: &str, rel_path: &str) -> Result<(), DomainError> {

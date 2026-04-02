@@ -9,10 +9,8 @@ pub enum Permission {
 pub struct PermissionChecker;
 
 impl PermissionChecker {
-    pub fn can_access(user: &User, file_owner: &str, permission: &Permission) -> bool {
-        match permission {
-            Permission::Read | Permission::Write => user.username == file_owner,
-        }
+    pub fn can_access(user: &User, file_owner: &str, _permission: &Permission) -> bool {
+        user.username == file_owner
     }
 
     /// Accepts relative paths (no leading /) and absolute paths (starting with /).

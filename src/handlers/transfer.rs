@@ -187,8 +187,7 @@ impl Handler for NlstHandler {
         let user = make_user(ctx);
         let cwd = ctx.cwd.clone();
 
-        // NLST is a "names only" listing; for this server we return files only.
-        let files = match self.files.list_files(&user, &cwd).await {
+        let entries = match self.files.list(&user, &cwd).await {
             Ok(e) => e,
             Err(e) => { error!("NLST: {}", e); ctx.error(550, "Requested action not taken."); return Ok(()); }
         };
@@ -202,7 +201,7 @@ impl Handler for NlstHandler {
             Err(e) => { error!("NLST data connect: {}", e); ctx.error(425, "Can't open data connection."); return Ok(()); }
         };
 
-        for name in &files {
+        for (name, _) in &entries {
             let line = format!("{}\r\n", name);
             if let Err(_) = data_stream.write_all(line.as_bytes()).await {
                 ctx.error(426, "Connection closed; transfer aborted.");

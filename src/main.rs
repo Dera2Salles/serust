@@ -12,7 +12,7 @@ mod middlewares;
 use application::{auth_service::AuthService, file_service::FileService};
 use framework::{app::App, metrics::Metrics};
 use handlers::auth::{UserHandler, PassHandler};
-use handlers::info::{SystHandler, FeatHandler, TypeHandler, NoopHandler, QuitHandler, MlstHandler};
+use handlers::info::{SystHandler, FeatHandler, TypeHandler, NoopHandler, QuitHandler};
 use handlers::network::{PasvHandler, PortHandler};
 use handlers::dir::{DirHandler, CwdHandler, CdupHandler};
 use handlers::transfer::{
@@ -93,7 +93,6 @@ async fn main() -> anyhow::Result<()> {
         .route(RnfrHandler)
         .route(RntoHandler::new(Arc::clone(&file_service)))
         .route(SizeHandler::new(Arc::clone(&file_service)))
-        .route(MlstHandler::new(Arc::clone(&file_service)))
         .run("0.0.0.0:8080")
         .await
 }

@@ -3,15 +3,7 @@ use crate::framework::{
     handler::{Handler, HandlerResult},
 };
 use async_trait::async_trait;
-use crate::application::file_service::FileService;
-use crate::domain::user::User;
-use std::sync::Arc;
 use tokio::io::BufReader;
-use tracing::error;
-
-fn make_user(ctx: &Context) -> User {
-    User { username: ctx.user().username.clone(), password_hash: String::new() }
-}
 
 pub struct SystHandler;
 #[async_trait]
@@ -99,49 +91,6 @@ impl Handler for QuitHandler {
         _: &mut tokio::net::tcp::WriteHalf<'_>,
     ) -> HandlerResult {
         ctx.write_line("221 Goodbye.");
-        Ok(())
-    }
-}
-
-// ── MLST ─────────────────────────────────────────────────────────────────────
-// Minimal RFC 3659-style facts (type + size). Modified time is not tracked by this server.
-pub struct MlstHandler { files: Arc<FileService> }
-impl MlstHandler {
-    pub fn new(files: Arc<FileService>) -> Self { Self { files } }
-}
-
-#[async_trait]
-impl Handler for MlstHandler {
-    fn command(&self) -> &'static str { "MLST" }
-    async fn handle(
-        &self,
-        ctx: &mut Context,
-        args: &[&str],
-        _: &mut BufReader<tokio::net::tcp::ReadHalf<'_>>,
-        _: &mut tokio::net::tcp::WriteHalf<'_>,
-    ) -> HandlerResult {
-        if args.is_empty() {
-            ctx.error(501, "Syntax error in parameters or arguments.");
-            return Ok(());
-        }
-
-        let target = args[0];
-        let user = make_user(ctx);
-        let cwd = ctx.cwd.clone();
-
-        match self.files.stat(&user, &cwd, target).await {
-            Ok(Some((size, is_dir))) => {
-                let kind = if is_dir { "dir" } else { "file" };
-                ctx.write_line(&format!("250-{};type={};size={}", target, kind, size));
-                ctx.write_line("250 End");
-            }
-            Ok(None) => ctx.error(550, "Requested action not taken. File unavailable."),
-            Err(e) => {
-                error!("MLST: {}", e);
-                ctx.error(550, "Requested action not taken. File unavailable.");
-            }
-        }
-
         Ok(())
     }
 }
