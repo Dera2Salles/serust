@@ -1,0 +1,30 @@
+[
+  {
+    "owner": "alice",
+    "path": "tt",
+    "grantee": "bob",
+    "can_read": true,
+    "can_write": false,
+    "can_download": false,
+    "remaining_reads": null,
+    "remaining_writes": null,
+    "remaining_downloads": null,
+    "can_reshare": false,
+    "granted_by": "alice",
+    "expires_at": null
+  },
+  {
+    "owner": "alice",
+    "path": "2026-04-02_log.txt",
+    "grantee": "bob",
+    "can_read": true,
+    "can_write": false,
+    "can_download": false,
+    "remaining_reads": null,
+    "remaining_writes": null,
+    "remaining_downloads": null,
+    "can_reshare": false,
+    "granted_by": "alice",
+    "expires_at": null
+  }
+]

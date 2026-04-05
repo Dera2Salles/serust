@@ -7,6 +7,7 @@ mod framework;
 mod handlers;
 mod infrastructure;
 mod interface;
+mod mcp;
 mod middlewares;
 
 use application::{auth_service::AuthService, file_service::FileService, share_service::ShareService};
@@ -26,6 +27,7 @@ use infrastructure::{
     share_repository::ShareRepository,
     user_repository::UserRepository,
 };
+use mcp::{server::run_mcp_server, registry::McpRegistry};
 use middlewares::{
     auth_middleware::AuthMiddleware,
     logging_middleware::LoggingMiddleware,
@@ -60,6 +62,15 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let _metrics = Metrics::new();
+
+    // ── MCP Server (port 8081) ────────────────────────────────────────────────
+    let mcp_registry = Arc::new(McpRegistry::new(Arc::clone(&file_service)));
+    tokio::spawn(async move {
+        if let Err(e) = run_mcp_server(mcp_registry, "0.0.0.0:8081").await {
+            tracing::error!("MCP server error: {}", e);
+        }
+    });
+    info!("MCP server spawned on 0.0.0.0:8081");
 
     App::new()
         .banner("220 tcp-framework FTP Server ready.")
