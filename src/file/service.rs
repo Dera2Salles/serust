@@ -171,15 +171,26 @@ impl FileService {
         }
 
         if let Some((owner, inner)) = Self::parse_shared(&resolved) {
+            if inner.is_empty() {
+                let allowed = self
+                    .shares
+                    .owners_shared_with(&user.username)
+                    .await
+                    .into_iter()
+                    .any(|o| o == owner);
+                if !allowed {
+                    return Err(DomainError::PermissionDenied);
+                }
+                return Ok(self.list_shared_children(user, &owner, "").await?);
+            }
+
             if !self.shares.can_read(&user.username, &owner, &inner).await {
                 return Err(DomainError::PermissionDenied);
             }
             let children = self.list_shared_children(user, &owner, &inner).await?;
-            if !inner.is_empty() {
-                self.shares
-                    .consume_read(&user.username, &owner, &inner)
-                    .await?;
-            }
+            self.shares
+                .consume_read(&user.username, &owner, &inner)
+                .await?;
             return Ok(children);
         }
 
@@ -190,6 +201,18 @@ impl FileService {
     pub async fn list_files(&self, user: &User, cwd: &str) -> Result<Vec<String>, DomainError> {
         let resolved = PermissionChecker::resolve_path(cwd, "");
         if let Some((owner, inner)) = Self::parse_shared(&resolved) {
+            if inner.is_empty() {
+                let allowed = self
+                    .shares
+                    .owners_shared_with(&user.username)
+                    .await
+                    .into_iter()
+                    .any(|o| o == owner);
+                if !allowed {
+                    return Err(DomainError::PermissionDenied);
+                }
+                return Ok(vec![]);
+            }
             if !self.shares.can_read(&user.username, &owner, &inner).await {
                 return Err(DomainError::PermissionDenied);
             }

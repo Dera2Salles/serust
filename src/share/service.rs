@@ -158,8 +158,15 @@ impl ShareService {
         if grant_path.is_empty() {
             return true;
         }
-        let prefix = format!("{}/", grant_path.trim_end_matches('/'));
-        target.starts_with(&prefix)
+        let grant_prefix = format!("{}/", grant_path.trim_end_matches('/'));
+        if target.starts_with(&grant_prefix) {
+            return true;
+        }
+        if target.is_empty() {
+            return true; 
+        }
+        let target_prefix = format!("{}/", target.trim_end_matches('/'));
+        grant_path.starts_with(&target_prefix)
     }
 
     fn is_expired(g: &ShareGrant, now: u64) -> bool {
