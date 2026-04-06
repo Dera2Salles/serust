@@ -1,32 +1,17 @@
-mod application;
-mod domain;
+mod common;
+mod database;
+mod file;
 mod framework;
-mod handlers;
-mod infrastructure;
-mod interface;
-mod mcp;
-mod middlewares;
 mod injection;
+mod log;
+mod mcp;
+mod server;
+mod share;
+mod user;
 
-use framework::{app::App, metrics::Metrics};
-use handlers::auth::{PassHandler, UserHandler};
-use handlers::dir::{CdupHandler, CwdHandler, DirHandler};
-use handlers::info::{
-    FeatHandler, MlstHandler, NoopHandler, QuitHandler, SystHandler, TypeHandler,
-};
-use handlers::network::{PasvHandler, PortHandler};
-use handlers::share::{ShareHandler, SharesHandler, UnshareHandler};
-use handlers::transfer::{
-    DeleHandler, ListDirHandler, MkdHandler, NlstHandler, RetrHandler, RmdHandler, RnfrHandler,
-    RntoHandler, SizeHandler, StorHandler,
-};
+use framework::metrics::Metrics;
 use mcp::{registry::McpRegistry, server::run_mcp_server};
-use middlewares::{
-    auth_middleware::AuthMiddleware, logging_middleware::LoggingMiddleware,
-    rate_limit_middleware::RateLimitMiddleware,
-};
 use std::sync::Arc;
-use std::time::Duration;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
@@ -53,39 +38,32 @@ async fn main() -> anyhow::Result<()> {
     });
     info!("MCP server spawned on 0.0.0.0:8081");
 
-    App::new()
-        .banner("220 tcp-framework FTP Server ready.")
-        .max_connections(1024)
-        .timeout(Duration::from_secs(300))
-        .middleware(LoggingMiddleware)
-        .middleware(RateLimitMiddleware::new(200, Duration::from_secs(60)))
-        .middleware(AuthMiddleware)
-        .route(UserHandler)
-        .route(PassHandler::new(Arc::clone(&auth_service)))
-        .route(SystHandler)
-        .route(FeatHandler)
-        .route(TypeHandler)
-        .route(NoopHandler)
-        .route(QuitHandler)
-        .route(MlstHandler::new(Arc::clone(&file_service)))
-        .route(PasvHandler)
-        .route(PortHandler)
-        .route(DirHandler)
-        .route(CwdHandler::new(Arc::clone(&file_service)))
-        .route(CdupHandler)
-        .route(StorHandler::new(Arc::clone(&file_service)))
-        .route(RetrHandler::new(Arc::clone(&file_service)))
-        .route(ListDirHandler::new(Arc::clone(&file_service)))
-        .route(NlstHandler::new(Arc::clone(&file_service)))
-        .route(MkdHandler::new(Arc::clone(&file_service)))
-        .route(RmdHandler::new(Arc::clone(&file_service)))
-        .route(DeleHandler::new(Arc::clone(&file_service)))
-        .route(RnfrHandler)
-        .route(RntoHandler::new(Arc::clone(&file_service)))
-        .route(SizeHandler::new(Arc::clone(&file_service)))
-        .route(ShareHandler::new(Arc::clone(&share_service)))
-        .route(UnshareHandler::new(Arc::clone(&share_service)))
-        .route(SharesHandler::new(Arc::clone(&share_service)))
-        .run("0.0.0.0:8080")
-        .await
+    let fallback_auth = Arc::clone(&auth_service);
+    let fallback_files = Arc::clone(&file_service);
+    tokio::spawn(async move {
+        if let Ok(listener) = tokio::net::TcpListener::bind("0.0.0.0:8082").await {
+            info!("Legacy Raw Protocol fallback listening on 0.0.0.0:8082");
+            while let Ok((stream, _)) = listener.accept().await {
+                let mut handler =
+                    crate::server::interface::connection_handler::ConnectionHandler::new(
+                        stream,
+                        Arc::clone(&fallback_auth),
+                        Arc::clone(&fallback_files),
+                    );
+                tokio::spawn(async move {
+                    let _ = handler.handle().await;
+                });
+            }
+        }
+    });
+
+    let server = server::tcp_server::TcpServer::new(
+        Arc::clone(&auth_service),
+        Arc::clone(&file_service),
+        Arc::clone(&share_service),
+    );
+
+    server.run("0.0.0.0:8080").await?;
+
+    Ok(())
 }

@@ -1,10 +1,7 @@
-
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-
-
 
 /// Données utilisateur authentifié (stockées en extension).
 #[derive(Debug, Clone)]
@@ -20,7 +17,9 @@ pub struct Extensions {
 
 impl Extensions {
     pub fn new() -> Self {
-        Self { map: HashMap::new() }
+        Self {
+            map: HashMap::new(),
+        }
     }
 
     pub fn set<T: Any + Send + Sync>(&mut self, val: T) {
@@ -38,8 +37,6 @@ impl Extensions {
     }
 }
 
-
-
 /// Le contexte complet d'une connexion.
 pub struct Context {
     /// Adresse du client distant.
@@ -50,7 +47,7 @@ pub struct Context {
     pub extensions: Extensions,
     /// Buffer de réponse : les handlers écrivent ici, le framework flush ensuite.
     pub response: Vec<u8>,
-    
+
     /// FTP State
     pub cwd: String,
     pub data_listener: Option<Arc<tokio::net::TcpListener>>,
@@ -70,14 +67,11 @@ impl Context {
         }
     }
 
-
     /// Écrit une ligne texte dans le buffer de réponse FTP (\r\n).
     pub fn write_line(&mut self, line: &str) {
         self.response.extend_from_slice(line.as_bytes());
         self.response.extend_from_slice(b"\r\n");
     }
-
-
 
     /// Raccourci : répond erreur FTP
     pub fn error(&mut self, code: u16, msg: &str) {

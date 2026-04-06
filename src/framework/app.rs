@@ -1,11 +1,5 @@
-
-use crate::framework::{
-    context::Context,
-    handler::Handler,
-    metrics::Metrics,
-    router::Router,
-};
-use crate::middlewares::middleware::{Middleware, MiddlewareResult};
+use crate::framework::middleware::{Middleware, MiddlewareResult};
+use crate::framework::{context::Context, handler::Handler, metrics::Metrics, router::Router};
 use socket2::{Domain, Protocol, Socket, Type};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -41,7 +35,6 @@ impl App {
         }
     }
 
-
     pub fn max_connections(mut self, n: usize) -> Self {
         self.max_connections = n;
         self
@@ -69,30 +62,30 @@ impl App {
         self
     }
 
-
-
-
     /// Démarre le serveur TCP. Bloque jusqu'au signal d'arrêt.
     pub async fn run(self, addr: &str) -> anyhow::Result<()> {
         let listener = build_listener(addr)?;
-        info!("Framework TCP démarré sur {} | max={} conn | timeout={}s",
-            addr, self.max_connections, self.conn_timeout.as_secs());
+        info!(
+            "Framework TCP démarré sur {} | max={} conn | timeout={}s",
+            addr,
+            self.max_connections,
+            self.conn_timeout.as_secs()
+        );
         info!("Commandes enregistrées : {:?}", self.router.commands());
 
-        let semaphore   = Arc::new(Semaphore::new(self.max_connections));
-        let router      = Arc::new(self.router);
+        let semaphore = Arc::new(Semaphore::new(self.max_connections));
+        let router = Arc::new(self.router);
         let middlewares = Arc::new(self.middlewares);
-        let metrics     = Arc::clone(&self.metrics);
+        let metrics = Arc::clone(&self.metrics);
         let conn_timeout = self.conn_timeout;
-        let banner      = Arc::new(self.banner);
+        let banner = Arc::new(self.banner);
 
         {
             let m = Arc::clone(&metrics);
             tokio::spawn(async move {
-                let mut interval = tokio::time::interval(
-                    Duration::from_secs(METRICS_LOG_INTERVAL_SECS)
-                );
-                interval.tick().await; 
+                let mut interval =
+                    tokio::time::interval(Duration::from_secs(METRICS_LOG_INTERVAL_SECS));
+                interval.tick().await;
                 loop {
                     interval.tick().await;
                     m.log_snapshot();
@@ -151,7 +144,6 @@ impl App {
     }
 }
 
-
 async fn run_connection(
     stream: TcpStream,
     peer_addr: SocketAddr,
@@ -164,13 +156,21 @@ async fn run_connection(
 ) {
     let result = timeout(
         conn_timeout,
-        handle_connection(stream, peer_addr, router, middlewares, metrics.clone(), banner),
-    ).await;
+        handle_connection(
+            stream,
+            peer_addr,
+            router,
+            middlewares,
+            metrics.clone(),
+            banner,
+        ),
+    )
+    .await;
 
     match result {
         Ok(Ok(())) => info!("- {} (propre)", peer_addr),
         Ok(Err(e)) => error!("- {} erreur: {}", peer_addr, e),
-        Err(_)     => warn!("- {} timeout", peer_addr),
+        Err(_) => warn!("- {} timeout", peer_addr),
     }
 
     metrics.connection_closed();
@@ -185,7 +185,9 @@ async fn handle_connection(
     banner: Arc<String>,
 ) -> anyhow::Result<()> {
     let local_addr = stream.local_addr()?;
-    stream.write_all(format!("220 {}\r\n", banner).as_bytes()).await?;
+    stream
+        .write_all(format!("220 {}\r\n", banner).as_bytes())
+        .await?;
 
     let (reader, mut writer) = stream.split();
     let mut buf_reader = BufReader::with_capacity(8 * 1024, reader);
@@ -195,10 +197,14 @@ async fn handle_connection(
         let mut line = String::new();
         let n = buf_reader.read_line(&mut line).await?;
 
-        if n == 0 { break; }
+        if n == 0 {
+            break;
+        }
 
         let line = line.trim_end_matches(['\n', '\r']).to_string();
-        if line.is_empty() { continue; }
+        if line.is_empty() {
+            continue;
+        }
 
         let mut parts = line.splitn(32, ' ');
         let command = match parts.next() {
@@ -233,7 +239,10 @@ async fn handle_connection(
                         metrics.error_occurred();
                     } else {
                         let arg_refs: Vec<&str> = args.iter().map(|s| *s).collect();
-                        if let Err(e) = handler.handle(&mut ctx, &arg_refs, &mut buf_reader, &mut writer).await {
+                        if let Err(e) = handler
+                            .handle(&mut ctx, &arg_refs, &mut buf_reader, &mut writer)
+                            .await
+                        {
                             error!("Handler {} error: {}", command, e);
                             ctx.error(500, &e.to_string());
                             metrics.error_occurred();
@@ -256,11 +265,14 @@ async fn handle_connection(
     Ok(())
 }
 
-
 fn build_listener(addr: &str) -> anyhow::Result<TcpListener> {
     let addr: SocketAddr = addr.parse()?;
     let socket = Socket::new(
-        if addr.is_ipv6() { Domain::IPV6 } else { Domain::IPV4 },
+        if addr.is_ipv6() {
+            Domain::IPV6
+        } else {
+            Domain::IPV4
+        },
         Type::STREAM,
         Some(Protocol::TCP),
     )?;

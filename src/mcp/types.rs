@@ -1,7 +1,5 @@
-
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-
 
 #[derive(Debug, Deserialize)]
 pub struct JsonRpcRequest {
@@ -52,7 +50,6 @@ pub struct JsonRpcError {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Value>,
 }
-
 
 /// Tool definition exposed to the LLM
 #[derive(Debug, Serialize, Clone)]

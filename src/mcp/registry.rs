@@ -1,10 +1,8 @@
-
-use crate::application::file_service::FileService;
-use crate::domain::user::User;
+use crate::file::service::FileService;
 use crate::mcp::types::{
-    McpPrompt, McpPromptArgument, McpResource, 
-    McpResourceContent, McpTool, McpToolResult
+    McpPrompt, McpPromptArgument, McpResource, McpResourceContent, McpTool, McpToolResult,
 };
+use crate::user::domain::User;
 use serde_json::{json, Value};
 use std::sync::Arc;
 use tracing::info;
@@ -17,7 +15,6 @@ impl McpRegistry {
     pub fn new(file_service: Arc<FileService>) -> Self {
         Self { file_service }
     }
-
 
     pub fn list_tools(&self) -> Vec<McpTool> {
         vec![
@@ -72,7 +69,8 @@ impl McpRegistry {
             },
             McpTool {
                 name: "search_files".into(),
-                description: "Search for files matching a pattern across the entire storage.".into(),
+                description: "Search for files matching a pattern across the entire storage."
+                    .into(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
@@ -89,15 +87,14 @@ impl McpRegistry {
     pub async fn call_tool(&self, name: &str, args: &Value) -> McpToolResult {
         info!("MCP tool call: {} args={}", name, args);
         match name {
-            "list_directory"    => self.tool_list_directory(args).await,
+            "list_directory" => self.tool_list_directory(args).await,
             "get_storage_stats" => self.tool_get_storage_stats(args).await,
-            "create_folder"     => self.tool_create_folder(args).await,
-            "delete_file"       => self.tool_delete_file(args).await,
-            "search_files"      => self.tool_search_files(args).await,
+            "create_folder" => self.tool_create_folder(args).await,
+            "delete_file" => self.tool_delete_file(args).await,
+            "search_files" => self.tool_search_files(args).await,
             _ => McpToolResult::error(format!("Unknown tool: {}", name)),
         }
     }
-
 
     pub async fn list_resources(&self, username: &str) -> Vec<McpResource> {
         let user = Self::make_user(username);
@@ -110,7 +107,7 @@ impl McpRegistry {
                         uri: format!("ftp://{}/{}", username, name),
                         name: name.clone(),
                         description: Some(format!("File '{}' in root directory", name)),
-                        mime_type: Some("text/plain".into()), 
+                        mime_type: Some("text/plain".into()),
                     });
                 }
             }
@@ -120,15 +117,16 @@ impl McpRegistry {
     }
 
     pub async fn read_resource(&self, uri: &str) -> Result<McpResourceContent, String> {
-        let rest = uri.strip_prefix("ftp://")
+        let rest = uri
+            .strip_prefix("ftp://")
             .ok_or_else(|| format!("Invalid URI scheme: {}", uri))?;
-        
+
         let mut parts = rest.splitn(2, '/');
         let username = parts.next().ok_or("Missing username in URI")?;
         let path = parts.next().unwrap_or("");
 
         let user = Self::make_user(username);
-        
+
         let (dir, filename) = if path.contains('/') {
             path.rsplit_once('/').unwrap()
         } else {
@@ -149,21 +147,18 @@ impl McpRegistry {
         }
     }
 
-
     pub fn list_prompts(&self) -> Vec<McpPrompt> {
-        vec![
-            McpPrompt {
-                name: "analyze_storage".into(),
-                description: Some("Provides a summary of the user's storage and suggests organization.".into()),
-                arguments: Some(vec![
-                    McpPromptArgument {
-                        name: "username".into(),
-                        description: Some("Target username".into()),
-                        required: true,
-                    }
-                ]),
-            },
-        ]
+        vec![McpPrompt {
+            name: "analyze_storage".into(),
+            description: Some(
+                "Provides a summary of the user's storage and suggests organization.".into(),
+            ),
+            arguments: Some(vec![McpPromptArgument {
+                name: "username".into(),
+                description: Some("Target username".into()),
+                required: true,
+            }]),
+        }]
     }
 
     pub async fn get_prompt(&self, name: &str, args: &Value) -> Result<String, String> {
@@ -172,17 +167,19 @@ impl McpRegistry {
                 let username = Self::get_str(args, "username")?;
                 let user = Self::make_user(username);
                 let (total_bytes, file_count, dir_count) = self.recursive_stats(&user, "/").await;
-                
+
                 Ok(format!(
                     "User '{}' has {} files and {} folders using {}.\n\
                      Please analyze the content and suggest if any organization is needed.",
-                    username, file_count, dir_count, Self::format_size(total_bytes)
+                    username,
+                    file_count,
+                    dir_count,
+                    Self::format_size(total_bytes)
                 ))
             }
             _ => Err(format!("Unknown prompt: {}", name)),
         }
     }
-
 
     fn make_user(username: &str) -> User {
         User {
@@ -209,13 +206,14 @@ impl McpRegistry {
         }
     }
 
-
     async fn tool_list_directory(&self, args: &Value) -> McpToolResult {
         let username = match Self::get_str(args, "username") {
-            Ok(v) => v, Err(e) => return McpToolResult::error(e),
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
         };
         let path = match Self::get_str(args, "path") {
-            Ok(v) => v, Err(e) => return McpToolResult::error(e),
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
         };
 
         let user = Self::make_user(username);
@@ -234,26 +232,33 @@ impl McpRegistry {
 
     async fn tool_get_storage_stats(&self, args: &Value) -> McpToolResult {
         let username = match Self::get_str(args, "username") {
-            Ok(v) => v, Err(e) => return McpToolResult::error(e),
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
         };
         let user = Self::make_user(username);
         let (total_bytes, file_count, dir_count) = self.recursive_stats(&user, "/").await;
 
         McpToolResult::success(format!(
             "Storage for '{}': {} used, {} files, {} folders.",
-            username, Self::format_size(total_bytes), file_count, dir_count
+            username,
+            Self::format_size(total_bytes),
+            file_count,
+            dir_count
         ))
     }
 
     async fn tool_create_folder(&self, args: &Value) -> McpToolResult {
         let username = match Self::get_str(args, "username") {
-            Ok(v) => v, Err(e) => return McpToolResult::error(e),
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
         };
         let path = match Self::get_str(args, "path") {
-            Ok(v) => v, Err(e) => return McpToolResult::error(e),
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
         };
         let name = match Self::get_str(args, "name") {
-            Ok(v) => v, Err(e) => return McpToolResult::error(e),
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
         };
 
         let user = Self::make_user(username);
@@ -265,13 +270,16 @@ impl McpRegistry {
 
     async fn tool_delete_file(&self, args: &Value) -> McpToolResult {
         let username = match Self::get_str(args, "username") {
-            Ok(v) => v, Err(e) => return McpToolResult::error(e),
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
         };
         let path = match Self::get_str(args, "path") {
-            Ok(v) => v, Err(e) => return McpToolResult::error(e),
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
         };
         let filename = match Self::get_str(args, "filename") {
-            Ok(v) => v, Err(e) => return McpToolResult::error(e),
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
         };
 
         let user = Self::make_user(username);
@@ -283,15 +291,19 @@ impl McpRegistry {
 
     async fn tool_search_files(&self, args: &Value) -> McpToolResult {
         let username = match Self::get_str(args, "username") {
-            Ok(v) => v, Err(e) => return McpToolResult::error(e),
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
         };
         let query = match Self::get_str(args, "query") {
-            Ok(v) => v, Err(e) => return McpToolResult::error(e),
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
         };
         let root = args.get("path").and_then(|v| v.as_str()).unwrap_or("/");
 
         let user = Self::make_user(username);
-        let matches = self.recursive_search(&user, root, &query.to_lowercase()).await;
+        let matches = self
+            .recursive_search(&user, root, &query.to_lowercase())
+            .await;
 
         if matches.is_empty() {
             McpToolResult::success("No matches found.")
@@ -305,26 +317,43 @@ impl McpRegistry {
             Ok(e) => e,
             Err(_) => return (0, 0, 0),
         };
-        let mut tb = 0; let mut fc = 0; let mut dc = 0;
+        let mut tb = 0;
+        let mut fc = 0;
+        let mut dc = 0;
         for (name, is_dir) in &entries {
             if *is_dir {
                 dc += 1;
-                let sub = if path == "/" { format!("/{}", name) } else { format!("{}/{}", path, name) };
+                let sub = if path == "/" {
+                    format!("/{}", name)
+                } else {
+                    format!("{}/{}", path, name)
+                };
                 let (b, f, d) = Box::pin(self.recursive_stats(user, &sub)).await;
-                tb += b; fc += f; dc += d;
+                tb += b;
+                fc += f;
+                dc += d;
             } else {
                 fc += 1;
-                if let Ok(Some((s, _))) = self.file_service.stat(user, path, name).await { tb += s; }
+                if let Ok(Some((s, _))) = self.file_service.stat(user, path, name).await {
+                    tb += s;
+                }
             }
         }
         (tb, fc, dc)
     }
 
     async fn recursive_search(&self, user: &User, path: &str, query: &str) -> Vec<String> {
-        let entries = match self.file_service.list(user, path).await { Ok(e) => e, Err(_) => return vec![] };
+        let entries = match self.file_service.list(user, path).await {
+            Ok(e) => e,
+            Err(_) => return vec![],
+        };
         let mut results = Vec::new();
         for (name, is_dir) in &entries {
-            let full = if path == "/" { format!("/{}", name) } else { format!("{}/{}", path, name) };
+            let full = if path == "/" {
+                format!("/{}", name)
+            } else {
+                format!("{}/{}", path, name)
+            };
             if name.to_lowercase().contains(query) {
                 results.push(format!("{} {}", if *is_dir { "📁" } else { "📄" }, full));
             }

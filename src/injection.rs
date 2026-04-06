@@ -1,21 +1,21 @@
-use crate::application::{auth_service::AuthService, file_service::FileService, share_service::ShareService};
-use crate::infrastructure::{
-    database::{
-        Database, 
-        repositories::{
-            user_repo::UserRepository as DbUserRepository,
-            file_repo::FileRepository as DbFileRepository,
-            share_repo::ShareRepository as DbShareRepository,
-            access_log_repo::AccessLogRepository as DbAccessLogRepository,
-        },
-        models::{DbUser, DbFileMetadata, DbShareLink, DbShareGrant, DbAccessLog},
+use crate::database::{
+    models::{DbAccessLog, DbFileMetadata, DbShareGrant, DbShareLink, DbUser},
+    repositories::{
+        access_log_repo::AccessLogRepository as DbAccessLogRepository,
+        file_repo::FileRepository as DbFileRepository,
+        share_repo::ShareRepository as DbShareRepository,
+        user_repo::UserRepository as DbUserRepository,
     },
-    file_repository::FileRepository,
-    share_repository::ShareRepository,
+    Database,
 };
+use crate::file::local_repository::FileRepository;
+use crate::file::service::FileService;
+use crate::share::local_repository::ShareRepository;
+use crate::share::service::ShareService;
+use crate::user::service::AuthService;
+use anyhow::Result;
 use std::sync::Arc;
 use tracing::info;
-use anyhow::Result;
 
 pub struct Services {
     pub auth_service: Arc<AuthService>,
@@ -45,14 +45,21 @@ pub async fn setup_injection() -> Result<Services> {
         ("alice", "alice123"),
         ("bob", "bob456"),
         ("carol", "carol789"),
+        ("testuser", "password123"),
+        ("ayanokoji", "mastermind"),
+        ("developer", "dev123"),
+        ("dera", "dera123"),
     ] {
         let _ = auth_service.register(name, pass).await;
         info!("Utilisateur prêt : {}", name);
     }
 
-    // Utilisation du code (seed test data for dev) pour utiliser les méthodes et struct
     let admin_username = "admin_dev";
-    if db_user_repo.find_by_username(admin_username).await?.is_none() {
+    if db_user_repo
+        .find_by_username(admin_username)
+        .await?
+        .is_none()
+    {
         let dev_user = DbUser {
             id: uuid::Uuid::new_v4(),
             username: admin_username.to_string(),

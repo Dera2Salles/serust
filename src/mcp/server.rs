@@ -1,8 +1,6 @@
-
 use crate::mcp::registry::McpRegistry;
 use crate::mcp::types::{
-    InitializeResult, JsonRpcRequest, JsonRpcResponse,
-    PromptsCapability, ResourcesCapability,
+    InitializeResult, JsonRpcRequest, JsonRpcResponse, PromptsCapability, ResourcesCapability,
     ServerCapabilities, ServerInfo, ToolsCapability,
 };
 use serde_json::{json, Value};
@@ -11,12 +9,8 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use tracing::{error, info};
 
-
 /// Start the MCP HTTP server on a separate port.
-pub async fn run_mcp_server(
-    registry: Arc<McpRegistry>,
-    addr: &str,
-) -> anyhow::Result<()> {
+pub async fn run_mcp_server(registry: Arc<McpRegistry>, addr: &str) -> anyhow::Result<()> {
     use hyper::server::conn::http1;
     use hyper::service::service_fn;
     use hyper_util::rt::TokioIo;
@@ -43,7 +37,6 @@ pub async fn run_mcp_server(
     }
 }
 
-
 async fn handle_http(
     req: hyper::Request<hyper::body::Incoming>,
     registry: Arc<McpRegistry>,
@@ -57,7 +50,10 @@ async fn handle_http(
     let cors_headers = [
         ("Access-Control-Allow-Origin", "*"),
         ("Access-Control-Allow-Methods", "GET, POST, OPTIONS"),
-        ("Access-Control-Allow-Headers", "Content-Type, Authorization"),
+        (
+            "Access-Control-Allow-Headers",
+            "Content-Type, Authorization",
+        ),
     ];
 
     if method == Method::OPTIONS {
@@ -73,9 +69,11 @@ async fn handle_http(
     }
 
     let response_body = match (method.clone(), path.as_str()) {
-        (Method::GET, "/mcp/health") => {
-            json_response(StatusCode::OK, json!({ "status": "ok", "service": "mcp" }), &cors_headers)
-        }
+        (Method::GET, "/mcp/health") => json_response(
+            StatusCode::OK,
+            json!({ "status": "ok", "service": "mcp" }),
+            &cors_headers,
+        ),
 
         (Method::POST, "/mcp") => {
             let body_bytes = match req.collect().await {
@@ -104,17 +102,17 @@ async fn handle_http(
             }
         }
 
-        _ => json_response(StatusCode::NOT_FOUND, json!({ "error": "Not found" }), &cors_headers),
+        _ => json_response(
+            StatusCode::NOT_FOUND,
+            json!({ "error": "Not found" }),
+            &cors_headers,
+        ),
     };
 
     Ok(response_body)
 }
 
-
-async fn dispatch_rpc(
-    req: JsonRpcRequest,
-    registry: &Arc<McpRegistry>,
-) -> JsonRpcResponse {
+async fn dispatch_rpc(req: JsonRpcRequest, registry: &Arc<McpRegistry>) -> JsonRpcResponse {
     let id = req.id.clone();
 
     if req.jsonrpc != "2.0" {
@@ -126,9 +124,16 @@ async fn dispatch_rpc(
             let result = InitializeResult {
                 protocol_version: "2024-11-05".into(),
                 capabilities: ServerCapabilities {
-                    tools: ToolsCapability { list_changed: false },
-                    resources: ResourcesCapability { subscribe: false, list_changed: false },
-                    prompts: PromptsCapability { list_changed: false },
+                    tools: ToolsCapability {
+                        list_changed: false,
+                    },
+                    resources: ResourcesCapability {
+                        subscribe: false,
+                        list_changed: false,
+                    },
+                    prompts: PromptsCapability {
+                        list_changed: false,
+                    },
                 },
                 server_info: ServerInfo {
                     name: "tcp-framework-mcp".into(),
@@ -148,15 +153,21 @@ async fn dispatch_rpc(
         "tools/call" => {
             let params = req.params.unwrap_or(Value::Object(serde_json::Map::new()));
             let name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
-            let args = params.get("arguments").cloned().unwrap_or(Value::Object(serde_json::Map::new()));
-            
+            let args = params
+                .get("arguments")
+                .cloned()
+                .unwrap_or(Value::Object(serde_json::Map::new()));
+
             let result = registry.call_tool(name, &args).await;
             JsonRpcResponse::ok(id, serde_json::to_value(result).unwrap())
         }
 
         "resources/list" => {
             let params = req.params.unwrap_or(Value::Object(serde_json::Map::new()));
-            let username = params.get("username").and_then(|v| v.as_str()).unwrap_or("alice");
+            let username = params
+                .get("username")
+                .and_then(|v| v.as_str())
+                .unwrap_or("alice");
             let resources = registry.list_resources(username).await;
             JsonRpcResponse::ok(id, json!({ "resources": resources }))
         }
@@ -178,15 +189,21 @@ async fn dispatch_rpc(
         "prompts/get" => {
             let params = req.params.unwrap_or(Value::Object(serde_json::Map::new()));
             let name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
-            let args = params.get("arguments").cloned().unwrap_or(Value::Object(serde_json::Map::new()));
-            
+            let args = params
+                .get("arguments")
+                .cloned()
+                .unwrap_or(Value::Object(serde_json::Map::new()));
+
             match registry.get_prompt(name, &args).await {
-                Ok(text) => JsonRpcResponse::ok(id, json!({ 
-                    "description": "System prompt generated",
-                    "messages": [
-                        { "role": "user", "content": { "type": "text", "text": text } }
-                    ]
-                })),
+                Ok(text) => JsonRpcResponse::ok(
+                    id,
+                    json!({
+                        "description": "System prompt generated",
+                        "messages": [
+                            { "role": "user", "content": { "type": "text", "text": text } }
+                        ]
+                    }),
+                ),
                 Err(e) => JsonRpcResponse::err(id, -32000, e),
             }
         }
@@ -196,7 +213,6 @@ async fn dispatch_rpc(
         method => JsonRpcResponse::err(id, -32601, format!("Method not found: {}", method)),
     }
 }
-
 
 fn json_response(
     status: hyper::StatusCode,

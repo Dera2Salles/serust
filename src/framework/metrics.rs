@@ -1,4 +1,3 @@
-
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tracing::info;
@@ -34,8 +33,6 @@ impl Metrics {
     pub fn error_occurred(&self) {
         self.total_errors.fetch_add(1, Ordering::Relaxed);
     }
-
-
 
     pub fn snapshot(&self) -> MetricsSnapshot {
         MetricsSnapshot {
