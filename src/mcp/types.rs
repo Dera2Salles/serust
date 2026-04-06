@@ -1,12 +1,7 @@
-// src/mcp/types.rs
-//
-// Types JSON-RPC 2.0 et structures du protocole MCP.
-// MCP = Model Context Protocol (Anthropic) — transport HTTP + SSE.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-// ── JSON-RPC 2.0 ─────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
 pub struct JsonRpcRequest {
@@ -58,7 +53,6 @@ pub struct JsonRpcError {
     pub data: Option<Value>,
 }
 
-// ── MCP Protocol types ────────────────────────────────────────────────────────
 
 /// Tool definition exposed to the LLM
 #[derive(Debug, Serialize, Clone)]

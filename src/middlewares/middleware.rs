@@ -1,8 +1,3 @@
-// src/framework/middleware.rs
-//
-// Trait Middleware : intercepte AVANT chaque commande.
-// Plusieurs middlewares s'enchaînent dans l'ordre d'enregistrement.
-// Un middleware peut stopper la chaîne en retournant MiddlewareResult::Stop.
 
 use crate::framework::context::Context;
 use async_trait::async_trait;

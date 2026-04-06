@@ -1,22 +1,3 @@
-// src/framework/app.rs
-//
-// AppBuilder : l'API publique du framework.
-// Permet de composer un serveur en chaînant .middleware() et .route().
-//
-// Usage :
-//   App::new()
-//       .max_connections(512)
-//       .timeout(Duration::from_secs(120))
-//       .middleware(AuthMiddleware::new(auth_service))
-//       .middleware(LoggingMiddleware)
-//       .middleware(RateLimitMiddleware::new(60))
-//       .route(LoginHandler::new(auth_service))
-//       .route(UploadHandler::new(file_service))
-//       .route(DownloadHandler::new(file_service))
-//       .route(ListHandler::new(file_service))
-//       .route(PingHandler)          // commande custom
-//       .run("0.0.0.0:8080")
-//       .await?;
 
 use crate::framework::{
     context::Context,
@@ -60,7 +41,6 @@ impl App {
         }
     }
 
-    // ─── Builder methods ─────────────────────────────────────────────────────
 
     pub fn max_connections(mut self, n: usize) -> Self {
         self.max_connections = n;
@@ -91,7 +71,6 @@ impl App {
 
 
 
-    // ─── Run ─────────────────────────────────────────────────────────────────
 
     /// Démarre le serveur TCP. Bloque jusqu'au signal d'arrêt.
     pub async fn run(self, addr: &str) -> anyhow::Result<()> {
@@ -107,14 +86,13 @@ impl App {
         let conn_timeout = self.conn_timeout;
         let banner      = Arc::new(self.banner);
 
-        // Tâche périodique de log des métriques
         {
             let m = Arc::clone(&metrics);
             tokio::spawn(async move {
                 let mut interval = tokio::time::interval(
                     Duration::from_secs(METRICS_LOG_INTERVAL_SECS)
                 );
-                interval.tick().await; // saute la première tick immédiate
+                interval.tick().await; 
                 loop {
                     interval.tick().await;
                     m.log_snapshot();
@@ -173,7 +151,6 @@ impl App {
     }
 }
 
-// ─── Boucle de connexion ─────────────────────────────────────────────────────
 
 async fn run_connection(
     stream: TcpStream,
@@ -197,7 +174,6 @@ async fn run_connection(
     }
 
     metrics.connection_closed();
-    // _permit droppé → slot libéré dans le semaphore
 }
 
 async fn handle_connection(
@@ -209,7 +185,6 @@ async fn handle_connection(
     banner: Arc<String>,
 ) -> anyhow::Result<()> {
     let local_addr = stream.local_addr()?;
-    // Envoie le banner de bienvenue
     stream.write_all(format!("220 {}\r\n", banner).as_bytes()).await?;
 
     let (reader, mut writer) = stream.split();
@@ -220,13 +195,11 @@ async fn handle_connection(
         let mut line = String::new();
         let n = buf_reader.read_line(&mut line).await?;
 
-        // EOF — client déconnecté
         if n == 0 { break; }
 
         let line = line.trim_end_matches(['\n', '\r']).to_string();
         if line.is_empty() { continue; }
 
-        // Parse : "COMMAND arg1 arg2 ..."
         let mut parts = line.splitn(32, ' ');
         let command = match parts.next() {
             Some(c) => c.to_uppercase(),
@@ -234,7 +207,6 @@ async fn handle_connection(
         };
         let args: Vec<&str> = parts.collect();
 
-        // Commande QUIT gérée par le framework lui-même
         if command == "QUIT" {
             writer.write_all(b"221 Goodbye.\r\n").await?;
             break;
@@ -242,7 +214,6 @@ async fn handle_connection(
 
         metrics.command_received();
 
-        // ── Pipeline middlewares ──
         let mut stopped = false;
         for mw in middlewares.iter() {
             match mw.before(&mut ctx, &command).await {
@@ -254,11 +225,9 @@ async fn handle_connection(
             }
         }
 
-        // ── Dispatch vers le handler ──
         if !stopped {
             match router.resolve(&command) {
                 Some(handler) => {
-                    // Vérification auth (délégué au handler via requires_auth)
                     if handler.requires_auth() && !ctx.is_authenticated() {
                         ctx.error(530, "Not logged in.");
                         metrics.error_occurred();
@@ -278,7 +247,6 @@ async fn handle_connection(
             }
         }
 
-        // ── Flush le buffer de réponse du Context ──
         if !ctx.response.is_empty() {
             writer.write_all(&ctx.response).await?;
             ctx.response.clear();
@@ -288,7 +256,6 @@ async fn handle_connection(
     Ok(())
 }
 
-// ─── Helpers réseau ──────────────────────────────────────────────────────────
 
 fn build_listener(addr: &str) -> anyhow::Result<TcpListener> {
     let addr: SocketAddr = addr.parse()?;

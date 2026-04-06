@@ -37,9 +37,6 @@ fn parse_opt_bool(arg: &str, key: &str) -> Option<bool> {
     }
 }
 
-// ── SHARE ────────────────────────────────────────────────────────────────────
-// Usage:
-//   SHARE <path> <to_user> <perm: R|W|D|RW...> [reads=N] [downloads=N] [writes=N] [reshare=0|1] [expires=TIMESTAMP]
 pub struct ShareHandler {
     shares: Arc<ShareService>,
 }
@@ -91,7 +88,6 @@ impl Handler for ShareHandler {
             }
         }
 
-        // If path refers to shared namespace, require reshare permission.
         let (owner, owner_rel) = match ShareService::resolve_owner_path(&actor.username, &cwd, path) {
             Ok(v) => v,
             Err(_) => { ctx.error(550, "Requested action not taken."); return Ok(()); }
@@ -134,8 +130,6 @@ impl Handler for ShareHandler {
     }
 }
 
-// ── UNSHARE ──────────────────────────────────────────────────────────────────
-// Usage: UNSHARE <path> <to_user>
 pub struct UnshareHandler {
     shares: Arc<ShareService>,
 }
@@ -184,8 +178,6 @@ impl Handler for UnshareHandler {
     }
 }
 
-// ── SHARES ───────────────────────────────────────────────────────────────────
-// Usage: SHARES [IN|OUT]
 pub struct SharesHandler {
     shares: Arc<ShareService>,
 }

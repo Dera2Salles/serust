@@ -1,14 +1,17 @@
 use crate::domain::{error::DomainError, user::User};
-use crate::infrastructure::user_repository::UserRepository;
+use crate::infrastructure::database::repositories::user_repo::UserRepository as DbUserRepository;
+use crate::infrastructure::database::models::DbUser;
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
+use uuid::Uuid;
+use chrono::Utc;
 
 pub struct AuthService {
-    user_repo: Arc<UserRepository>,
+    user_repo: Arc<DbUserRepository>,
 }
 
 impl AuthService {
-    pub fn new(user_repo: Arc<UserRepository>) -> Self {
+    pub fn new(user_repo: Arc<DbUserRepository>) -> Self {
         Self { user_repo }
     }
 
@@ -21,15 +24,27 @@ impl AuthService {
     pub async fn login(&self, username: &str, password: &str) -> Result<User, DomainError> {
         let hash = Self::hash_password(password);
         match self.user_repo.find_by_username(username).await {
-            Some(user) if user.password_hash == hash => Ok(user),
-            Some(_) => Err(DomainError::InvalidCredentials),
-            None => Err(DomainError::InvalidCredentials),
+            Ok(Some(db_user)) if db_user.password_hash == hash => {
+                Ok(User {
+                    username: db_user.username,
+                    password_hash: db_user.password_hash,
+                })
+            }
+            _ => Err(DomainError::InvalidCredentials),
         }
     }
 
     pub async fn register(&self, username: &str, password: &str) -> Result<(), DomainError> {
         let hash = Self::hash_password(password);
-        let user = User::new(username, hash);
-        self.user_repo.save(user).await
+        let dev_user = DbUser {
+            id: Uuid::new_v4(),
+            username: username.to_string(),
+            password_hash: hash,
+            email: "".to_string(),
+            created_at: Utc::now(),
+            storage_quota_bytes: 0,
+            is_active: true,
+        };
+        self.user_repo.create(&dev_user).await.map_err(|e| DomainError::Internal(e.to_string()))
     }
 }

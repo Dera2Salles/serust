@@ -1,7 +1,3 @@
-// src/framework/metrics.rs
-//
-// Métriques temps réel — atomic counters, accessible depuis n'importe quelle tâche.
-// Pas de lock global : utilise des AtomicU64.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;

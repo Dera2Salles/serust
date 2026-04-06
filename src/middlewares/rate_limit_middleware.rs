@@ -1,7 +1,3 @@
-// src/middlewares/rate_limit_middleware.rs
-//
-// Rate limiter sliding window par IP.
-// DashMap = HashMap concurrent sans lock global.
 
 use crate::framework::context::Context;
 use crate::middlewares::middleware::{Middleware, MiddlewareResult};
@@ -45,7 +41,6 @@ impl Middleware for RateLimitMiddleware {
         let entry = self.buckets.entry(ip).or_insert_with(|| Mutex::new(VecDeque::new()));
         let mut deque = entry.lock().unwrap();
 
-        // Supprime les entrées hors fenêtre
         while deque.front().map_or(false, |t: &Instant| now.duration_since(*t) > window) {
             deque.pop_front();
         }

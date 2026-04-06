@@ -1,7 +1,3 @@
-// src/framework/router.rs
-//
-// Router : mappe les noms de commandes vers leurs handlers.
-// C'est lui qui permet d'enregistrer des commandes à la volée.
 
 use crate::framework::handler::Handler;
 use std::collections::HashMap;

@@ -53,11 +53,10 @@ impl Handler for CwdHandler {
             format!("/{}", new_cwd)
         };
 
-        // Verify the directory actually exists on disk (root always OK)
         let username = ctx.user().username.clone();
         let user = User { username, password_hash: String::new() };
         let exists = if new_cwd.is_empty() {
-            true // root always exists
+            true 
         } else {
             self.files.dir_exists(&user, "/", &new_cwd).await
         };

@@ -1,7 +1,3 @@
-// src/mcp/registry.rs
-//
-// Registry managing MCP primitives: Tools, Resources, and Prompts.
-// Tightly integrated with FileService for FTP storage access.
 
 use crate::application::file_service::FileService;
 use crate::domain::user::User;
@@ -22,7 +18,6 @@ impl McpRegistry {
         Self { file_service }
     }
 
-    // ── Tools ─────────────────────────────────────────────────────────────────
 
     pub fn list_tools(&self) -> Vec<McpTool> {
         vec![
@@ -103,13 +98,11 @@ impl McpRegistry {
         }
     }
 
-    // ── Resources ─────────────────────────────────────────────────────────────
 
     pub async fn list_resources(&self, username: &str) -> Vec<McpResource> {
         let user = Self::make_user(username);
         let mut resources = Vec::new();
 
-        // Automatically expose files in the root as resources for quick access
         if let Ok(entries) = self.file_service.list(&user, "/").await {
             for (name, is_dir) in entries {
                 if !is_dir {
@@ -117,7 +110,7 @@ impl McpRegistry {
                         uri: format!("ftp://{}/{}", username, name),
                         name: name.clone(),
                         description: Some(format!("File '{}' in root directory", name)),
-                        mime_type: Some("text/plain".into()), // Simplified
+                        mime_type: Some("text/plain".into()), 
                     });
                 }
             }
@@ -127,7 +120,6 @@ impl McpRegistry {
     }
 
     pub async fn read_resource(&self, uri: &str) -> Result<McpResourceContent, String> {
-        // Parse URI: ftp://{username}/{path}
         let rest = uri.strip_prefix("ftp://")
             .ok_or_else(|| format!("Invalid URI scheme: {}", uri))?;
         
@@ -137,7 +129,6 @@ impl McpRegistry {
 
         let user = Self::make_user(username);
         
-        // Split path into dir and filename
         let (dir, filename) = if path.contains('/') {
             path.rsplit_once('/').unwrap()
         } else {
@@ -158,7 +149,6 @@ impl McpRegistry {
         }
     }
 
-    // ── Prompts ───────────────────────────────────────────────────────────────
 
     pub fn list_prompts(&self) -> Vec<McpPrompt> {
         vec![
@@ -193,7 +183,6 @@ impl McpRegistry {
         }
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
 
     fn make_user(username: &str) -> User {
         User {
@@ -220,7 +209,6 @@ impl McpRegistry {
         }
     }
 
-    // ── Tool implementations (Refactored from tools.rs) ────────────────────────
 
     async fn tool_list_directory(&self, args: &Value) -> McpToolResult {
         let username = match Self::get_str(args, "username") {

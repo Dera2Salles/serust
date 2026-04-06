@@ -8,7 +8,6 @@ use std::sync::Arc;
 use tokio::io::BufReader;
 use tracing::warn;
 
-// Stocke temporairement le username entre USER et PASS
 struct PendingAuth {
     username: String,
 }

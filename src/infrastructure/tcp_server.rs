@@ -1,4 +1,3 @@
-// src/infrastructure/tcp_server.rs
 
 use crate::application::{auth_service::AuthService, file_service::FileService};
 use crate::interface::connection_handler::ConnectionHandler;
@@ -14,7 +13,7 @@ use tracing::{error, info, warn};
 const MAX_CONNECTIONS: usize = 1024;
 
 /// Durée maximale d'inactivité avant fermeture forcée.
-const CONNECTION_TIMEOUT: Duration = Duration::from_secs(300); // 5 minutes
+const CONNECTION_TIMEOUT: Duration = Duration::from_secs(300); 
 
 pub struct TcpServer {
     addr: String,
@@ -39,16 +38,13 @@ impl TcpServer {
         let listener = self.build_listener().await?;
         info!("Serveur TCP démarré sur {}", self.addr);
 
-        // Semaphore : limite MAX_CONNECTIONS connexions simultanées.
         let semaphore = Arc::new(Semaphore::new(MAX_CONNECTIONS));
 
-        // Graceful shutdown : écoute CTRL+C ou SIGTERM.
         let shutdown = Self::shutdown_signal();
         tokio::pin!(shutdown);
 
         loop {
             tokio::select! {
-                // Priorité au signal d'arrêt.
                 biased;
 
                 _ = &mut shutdown => {
@@ -59,7 +55,6 @@ impl TcpServer {
                 result = listener.accept() => {
                     match result {
                         Ok((stream, peer_addr)) => {
-                            // Tente d'acquérir un slot de connexion sans bloquer.
                             let permit = match semaphore.clone().try_acquire_owned() {
                                 Ok(p) => p,
                                 Err(_) => {
@@ -67,7 +62,6 @@ impl TcpServer {
                                         "Limite de connexions atteinte ({}) — refus de {}",
                                         MAX_CONNECTIONS, peer_addr
                                     );
-                                    // Ferme proprement sans crasher le serveur.
                                     drop(stream);
                                     continue;
                                 }
@@ -78,7 +72,6 @@ impl TcpServer {
                                 semaphore.available_permits()
                             );
 
-                            // Active TCP keepalive pour détecter les clients fantômes.
                             if let Err(e) = Self::configure_socket(&stream) {
                                 warn!("Impossible de configurer socket {}: {}", peer_addr, e);
                             }
@@ -86,17 +79,13 @@ impl TcpServer {
                             let auth  = Arc::clone(&self.auth_service);
                             let files = Arc::clone(&self.file_service);
 
-                            // 1 connexion = 1 tâche Tokio.
-                            // Le permit est déplacé dans la tâche : libéré quand la tâche se termine.
                             tokio::spawn(Self::handle_connection(
                                 stream, auth, files, permit, peer_addr.to_string(),
                             ));
                         }
 
-                        // Erreurs accept() non-fatales (ex: EMFILE, ENFILE).
                         Err(e) => {
                             error!("Erreur accept() : {} — pause 100ms", e);
-                            // Pause courte pour éviter une boucle infinie qui brûle le CPU.
                             tokio::time::sleep(Duration::from_millis(100)).await;
                         }
                     }
@@ -108,7 +97,6 @@ impl TcpServer {
         Ok(())
     }
 
-    // ─── Helpers privés ──────────────────────────────────────────────────────
 
     /// Crée le TcpListener avec SO_REUSEADDR pour redémarrage rapide.
     async fn build_listener(&self) -> anyhow::Result<TcpListener> {
@@ -126,11 +114,10 @@ impl TcpServer {
             Some(Protocol::TCP),
         )?;
 
-        // Permet de redémarrer le serveur sans attendre TIME_WAIT.
         socket.set_reuse_address(true)?;
         socket.set_nonblocking(true)?;
         socket.bind(&addr.into())?;
-        socket.listen(1024)?; // backlog = 1024
+        socket.listen(1024)?; 
 
         let listener = TcpListener::from_std(socket.into())?;
         Ok(listener)
@@ -142,12 +129,11 @@ impl TcpServer {
 
         let sock_ref = SockRef::from(stream);
         let keepalive = TcpKeepalive::new()
-            .with_time(Duration::from_secs(60)) // idle avant premier probe
-            .with_interval(Duration::from_secs(10)) // intervalle entre probes
-            .with_retries(3); // probes avant abandon
+            .with_time(Duration::from_secs(60)) 
+            .with_interval(Duration::from_secs(10)) 
+            .with_retries(3); 
 
         sock_ref.set_tcp_keepalive(&keepalive)?;
-        // Désactive Nagle : envoie immédiatement les petites réponses texte.
         stream.set_nodelay(true)?;
         Ok(())
     }
@@ -181,7 +167,6 @@ impl TcpServer {
                 );
             }
         }
-        // _permit droppé ici → slot libéré dans le semaphore.
     }
 
     /// Attend CTRL+C (tous OS) ou SIGTERM (Unix seulement).

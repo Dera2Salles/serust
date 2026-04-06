@@ -22,9 +22,6 @@ impl Handler for PasvHandler {
                 let p1 = port / 256;
                 let p2 = port % 256;
 
-                // Use the local address of the control connection (most accurate interface).
-                // Some clients (including our Flutter one) will ignore this IP anyway and
-                // connect to the control host for robustness behind NAT.
                 let local_ip = ctx.local_addr.ip().to_string();
                 let ip_str = local_ip.replace(".", ",");
                 

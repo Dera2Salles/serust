@@ -1,7 +1,3 @@
-// src/framework/handler.rs
-//
-// Trait Handler : contrat que tout handler de commande doit implémenter.
-// Pour ajouter une commande au serveur : implémenter Handler, enregistrer dans le Router.
 
 use crate::framework::context::Context;
 use async_trait::async_trait;

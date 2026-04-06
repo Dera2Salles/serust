@@ -22,4 +22,3 @@ pub struct ShareGrant {
     /// Unix timestamp in seconds. Grant is invalid after this time.
     pub expires_at: Option<u64>,
 }
-

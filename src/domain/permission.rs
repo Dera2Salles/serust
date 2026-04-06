@@ -30,7 +30,6 @@ impl PermissionChecker {
             format!("{}/{}", cwd, path)
         };
 
-        // Normalise: split on '/', remove empty & '.', apply '..'
         let mut parts: Vec<&str> = Vec::new();
         for segment in full.split('/') {
             match segment {

@@ -1,4 +1,3 @@
-// src/middlewares/logging_middleware.rs
 
 use crate::framework::context::Context;
 use crate::middlewares::middleware::{Middleware, MiddlewareResult};

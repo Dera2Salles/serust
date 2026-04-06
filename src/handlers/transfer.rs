@@ -14,7 +14,6 @@ use tracing::error;
 
 async fn get_data_stream(ctx: &mut Context) -> anyhow::Result<tokio::net::TcpStream> {
     if let Some(listener) = ctx.data_listener.take() {
-        // Wait for client to connect to the data port with a timeout
         let result = timeout(Duration::from_secs(30), listener.accept()).await;
         match result {
             Ok(Ok((stream, _))) => Ok(stream),
@@ -22,7 +21,6 @@ async fn get_data_stream(ctx: &mut Context) -> anyhow::Result<tokio::net::TcpStr
             Err(_) => Err(anyhow::anyhow!("Timeout waiting for data connection")),
         }
     } else if let Some(addr) = ctx.data_address.take() {
-        // Active mode connection
         let stream = timeout(Duration::from_secs(30), tokio::net::TcpStream::connect(addr)).await??;
         Ok(stream)
     } else {
@@ -34,7 +32,6 @@ fn make_user(ctx: &Context) -> User {
     User { username: ctx.user().username.clone(), password_hash: String::new() }
 }
 
-// ── STOR ──────────────────────────────────────────────────────────────────────
 
 pub struct StorHandler { files: Arc<FileService> }
 impl StorHandler { pub fn new(files: Arc<FileService>) -> Self { Self { files } } }
@@ -80,7 +77,6 @@ impl Handler for StorHandler {
     }
 }
 
-// ── RETR ──────────────────────────────────────────────────────────────────────
 
 pub struct RetrHandler { files: Arc<FileService> }
 impl RetrHandler { pub fn new(files: Arc<FileService>) -> Self { Self { files } } }
@@ -125,7 +121,6 @@ impl Handler for RetrHandler {
     }
 }
 
-// ── LIST ──────────────────────────────────────────────────────────────────────
 
 pub struct ListDirHandler { files: Arc<FileService> }
 impl ListDirHandler { pub fn new(files: Arc<FileService>) -> Self { Self { files } } }
@@ -139,7 +134,6 @@ impl Handler for ListDirHandler {
         writer: &mut tokio::net::tcp::WriteHalf<'_>,
     ) -> HandlerResult {
         let user = make_user(ctx);
-        // Allow "LIST <path>" optionally, otherwise use cwd
         let target = args.first().copied().unwrap_or(".");
         let cwd = if target == "." || target == "-a" || target == "-la" {
             ctx.cwd.clone()
@@ -168,7 +162,6 @@ impl Handler for ListDirHandler {
             Err(e) => { error!("LIST data connect: {}", e); ctx.error(425, "Can't open data connection."); return Ok(()); }
         };
 
-        // RFC 959 LIST format: type + permissions + links + user + group + size + date + name
         for (name, is_dir) in &entries {
             let type_char = if *is_dir { 'd' } else { '-' };
             let perms = if *is_dir { "rwxr-xr-x" } else { "rw-r--r--" };
@@ -187,7 +180,6 @@ impl Handler for ListDirHandler {
     }
 }
 
-// ── NLST ──────────────────────────────────────────────────────────────────────
 
 pub struct NlstHandler { files: Arc<FileService> }
 impl NlstHandler { pub fn new(files: Arc<FileService>) -> Self { Self { files } } }
@@ -203,7 +195,6 @@ impl Handler for NlstHandler {
         let user = make_user(ctx);
         let cwd = ctx.cwd.clone();
 
-        // NLST is a "names only" listing; return files only.
         let files = match self.files.list_files(&user, &cwd).await {
             Ok(e) => e,
             Err(e) => { 
@@ -238,7 +229,6 @@ impl Handler for NlstHandler {
     }
 }
 
-// ── MKD ───────────────────────────────────────────────────────────────────────
 
 pub struct MkdHandler { files: Arc<FileService> }
 impl MkdHandler { pub fn new(files: Arc<FileService>) -> Self { Self { files } } }
@@ -261,7 +251,6 @@ impl Handler for MkdHandler {
 
         match self.files.mkdir(&user, &cwd, dirname).await {
             Ok(_) => {
-                // Return absolute path of created dir as per RFC 959
                 let abs = format!("{}/{}", if cwd == "/" { "" } else { &cwd }, dirname)
                     .replace("//", "/");
                 ctx.write_line(&format!("257 \"{}\" directory created.", abs));
@@ -272,7 +261,6 @@ impl Handler for MkdHandler {
     }
 }
 
-// ── RMD ───────────────────────────────────────────────────────────────────────
 
 pub struct RmdHandler { files: Arc<FileService> }
 impl RmdHandler { pub fn new(files: Arc<FileService>) -> Self { Self { files } } }
@@ -300,7 +288,6 @@ impl Handler for RmdHandler {
     }
 }
 
-// ── DELE ──────────────────────────────────────────────────────────────────────
 
 pub struct DeleHandler { files: Arc<FileService> }
 impl DeleHandler { pub fn new(files: Arc<FileService>) -> Self { Self { files } } }
@@ -328,7 +315,6 @@ impl Handler for DeleHandler {
     }
 }
 
-// ── RNFR / RNTO (rename) ──────────────────────────────────────────────────────
 
 pub struct RnfrHandler;
 #[async_trait]
@@ -343,7 +329,6 @@ impl Handler for RnfrHandler {
             ctx.error(501, "Syntax error in parameters or arguments.");
             return Ok(());
         }
-        // Store rename source in context extensions
         ctx.extensions.set(RenameFrom(args[0].to_string()));
         ctx.write_line("350 Ready for RNTO.");
         Ok(())
@@ -376,7 +361,6 @@ impl Handler for RntoHandler {
         let user = make_user(ctx);
         let cwd = ctx.cwd.clone();
 
-        // Implement rename: download + re-store + delete original
         match self.files.download(&user, &cwd, &from).await {
             Ok(data) => {
                 let size = data.len() as u64;
@@ -394,7 +378,6 @@ impl Handler for RntoHandler {
     }
 }
 
-// ── SIZE ──────────────────────────────────────────────────────────────────────
 
 pub struct SizeHandler { files: Arc<FileService> }
 impl SizeHandler { pub fn new(files: Arc<FileService>) -> Self { Self { files } } }

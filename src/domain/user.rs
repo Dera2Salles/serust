@@ -6,6 +6,7 @@ pub struct User {
     pub password_hash: String,
 }
 
+#[allow(dead_code)]
 impl User {
     pub fn new(username: impl Into<String>, password_hash: impl Into<String>) -> Self {
         Self {

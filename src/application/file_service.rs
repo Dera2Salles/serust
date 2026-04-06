@@ -66,7 +66,6 @@ impl FileService {
             } else {
                 format!("{}/{}", inner_dir.trim_end_matches('/'), child)
             };
-            // Determine dir/file: if stat says dir → dir; otherwise treat as file.
             let is_dir = match self.file_repo.stat(owner, &child_path).await? {
                 Some((_size, is_dir)) => is_dir,
                 None => false,
@@ -101,7 +100,6 @@ impl FileService {
             return self.file_repo.store(meta, data).await;
         }
 
-        // If destination exists, ensure write permission on it.
         if let Some(existing) = self.file_repo.get_metadata(&user.username, &resolved).await {
             if !PermissionChecker::can_access(user, &existing.owner, &Permission::Write) {
                 return Err(DomainError::PermissionDenied);
@@ -122,7 +120,6 @@ impl FileService {
                 return Err(DomainError::PermissionDenied);
             }
             let data = self.file_repo.load(&owner, &inner).await?;
-            // Decrement download counter only on success.
             self.shares.consume_download(&user.username, &owner, &inner).await?;
             return Ok(data);
         }
@@ -142,13 +139,8 @@ impl FileService {
     /// List entries (files + dirs) in the current working directory.
     pub async fn list(&self, user: &User, cwd: &str) -> Result<Vec<(String, bool)>, DomainError> {
         let resolved = PermissionChecker::resolve_path(cwd, "");
-        // Virtual shared namespace:
-        // - "/" → include "shared" alongside normal entries
-        // - "/shared" → list owners who shared with you
-        // - "/shared/<owner>/<path>" → list shared children under that prefix
         if resolved.is_empty() {
             let mut entries = self.file_repo.list_entries(&user.username, "").await?;
-            // Always show shared dir (even if empty), so client can navigate.
             if !entries.iter().any(|(n, is_dir)| n == "shared" && *is_dir) {
                 entries.push(("shared".to_string(), true));
             }
@@ -166,7 +158,6 @@ impl FileService {
                 return Err(DomainError::PermissionDenied);
             }
             let children = self.list_shared_children(user, &owner, &inner).await?;
-            // Optional: consume a read on each listing.
             if !inner.is_empty() {
                 self.shares.consume_read(&user.username, &owner, &inner).await?;
             }
@@ -183,7 +174,6 @@ impl FileService {
             if !self.shares.can_read(&user.username, &owner, &inner).await {
                 return Err(DomainError::PermissionDenied);
             }
-            // For shared files listing, NLST is generally not supported for simplicity.
             return Ok(vec![]);
         }
         self.file_repo.list_files(&user.username, &resolved).await
@@ -216,7 +206,6 @@ impl FileService {
         if !PermissionChecker::is_safe_path(&resolved) {
             return Err(DomainError::UnsafePath);
         }
-        // Reserve "shared" virtual directory at root.
         if resolved == "shared" {
             return Err(DomainError::PermissionDenied);
         }
@@ -286,7 +275,6 @@ impl FileService {
             return true;
         }
         if let Some((owner, inner)) = Self::parse_shared(&resolved) {
-            // Owner dir exists only if there is at least one incoming grant.
             if inner.is_empty() {
                 return self
                     .shares

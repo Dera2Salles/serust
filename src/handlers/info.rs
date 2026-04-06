@@ -42,7 +42,6 @@ impl Handler for FeatHandler {
         _: &mut BufReader<tokio::net::tcp::ReadHalf<'_>>,
         _: &mut tokio::net::tcp::WriteHalf<'_>,
     ) -> HandlerResult {
-        // Multi-line response: must end with "211 End"
         ctx.write_line("211-Features:");
         ctx.write_line(" PASV");
         ctx.write_line(" SIZE");
@@ -104,8 +103,6 @@ impl Handler for QuitHandler {
     }
 }
 
-// ── MLST ─────────────────────────────────────────────────────────────────────
-// Minimal RFC 3659-style facts (type + size). Modified time is not tracked by this server.
 pub struct MlstHandler { files: Arc<FileService> }
 impl MlstHandler {
     pub fn new(files: Arc<FileService>) -> Self { Self { files } }

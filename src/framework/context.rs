@@ -1,7 +1,3 @@
-// src/framework/context.rs
-//
-// Context = état complet d'une connexion active.
-// Passé à chaque Handler et Middleware — extensible via extensions HashMap.
 
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
@@ -74,7 +70,6 @@ impl Context {
         }
     }
 
-    // ─── Helpers raccourcis ──────────────────────────────────────────────────
 
     /// Écrit une ligne texte dans le buffer de réponse FTP (\r\n).
     pub fn write_line(&mut self, line: &str) {

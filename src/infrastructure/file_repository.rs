@@ -30,7 +30,6 @@ impl FileRepository {
 
     pub async fn store(&self, meta: FileMetadata, data: Vec<u8>) -> Result<(), DomainError> {
         let path = self.user_path(&meta.owner, &meta.filename);
-        // Ensure parent directories exist
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).await?;
         }

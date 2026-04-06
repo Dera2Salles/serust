@@ -63,7 +63,6 @@ impl ShareService {
         let resolved = Self::normalize_path(cwd, path)?;
         let mut grants = self.repo.all().await;
 
-        // Upsert
         if let Some(existing) = grants.iter_mut().find(|g| g.owner == owner && g.path == resolved && g.grantee == grantee) {
             existing.can_read = can_read;
             existing.can_write = can_write;
@@ -142,7 +141,6 @@ impl ShareService {
             return true;
         }
         if grant_path.is_empty() {
-            // Sharing root: everything
             return true;
         }
         let prefix = format!("{}/", grant_path.trim_end_matches('/'));
@@ -195,7 +193,6 @@ impl ShareService {
         }
         let now = Self::now_secs();
         let mut grants = self.repo.all().await;
-        // Consume the most specific matching grant (longest path)
         let mut idx: Option<usize> = None;
         let mut best_len = 0usize;
         for (i, g) in grants.iter().enumerate() {

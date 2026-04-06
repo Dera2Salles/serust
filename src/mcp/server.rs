@@ -1,11 +1,3 @@
-// src/mcp/server.rs
-//
-// Serveur HTTP MCP — écoute sur le port 8081 (séparé du FTP 8080).
-// Implémente le protocole MCP (Model Context Protocol) d'Anthropic.
-//
-// Endpoints :
-//   POST /mcp          → JSON-RPC handler (initialize, tools/list, tools/call)
-//   GET  /mcp/health   → health check
 
 use crate::mcp::registry::McpRegistry;
 use crate::mcp::types::{
@@ -19,7 +11,6 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use tracing::{error, info};
 
-// ── Public entry point ────────────────────────────────────────────────────────
 
 /// Start the MCP HTTP server on a separate port.
 pub async fn run_mcp_server(
@@ -52,7 +43,6 @@ pub async fn run_mcp_server(
     }
 }
 
-// ── HTTP request handler ──────────────────────────────────────────────────────
 
 async fn handle_http(
     req: hyper::Request<hyper::body::Incoming>,
@@ -120,7 +110,6 @@ async fn handle_http(
     Ok(response_body)
 }
 
-// ── JSON-RPC dispatch ─────────────────────────────────────────────────────────
 
 async fn dispatch_rpc(
     req: JsonRpcRequest,
@@ -128,7 +117,6 @@ async fn dispatch_rpc(
 ) -> JsonRpcResponse {
     let id = req.id.clone();
 
-    // Protocol enforcement (using the field as requested)
     if req.jsonrpc != "2.0" {
         return JsonRpcResponse::err(id, -32600, "Invalid Request: expected jsonrpc 2.0");
     }
@@ -152,7 +140,6 @@ async fn dispatch_rpc(
 
         "notifications/initialized" => JsonRpcResponse::ok(id, json!({})),
 
-        // ── Tools ──
         "tools/list" => {
             let tools = registry.list_tools();
             JsonRpcResponse::ok(id, json!({ "tools": tools }))
@@ -167,7 +154,6 @@ async fn dispatch_rpc(
             JsonRpcResponse::ok(id, serde_json::to_value(result).unwrap())
         }
 
-        // ── Resources ──
         "resources/list" => {
             let params = req.params.unwrap_or(Value::Object(serde_json::Map::new()));
             let username = params.get("username").and_then(|v| v.as_str()).unwrap_or("alice");
@@ -184,7 +170,6 @@ async fn dispatch_rpc(
             }
         }
 
-        // ── Prompts ──
         "prompts/list" => {
             let prompts = registry.list_prompts();
             JsonRpcResponse::ok(id, json!({ "prompts": prompts }))
@@ -212,7 +197,6 @@ async fn dispatch_rpc(
     }
 }
 
-// ── HTTP response helpers ─────────────────────────────────────────────────────
 
 fn json_response(
     status: hyper::StatusCode,
