@@ -142,4 +142,20 @@ impl FileRepository {
         let path = self.user_path(username, rel_path);
         path.exists() && path.is_dir()
     }
+
+    pub async fn rename(&self, username: &str, old_rel_path: &str, new_rel_path: &str) -> Result<(), DomainError> {
+        let old_path = self.user_path(username, old_rel_path);
+        let new_path = self.user_path(username, new_rel_path);
+        
+        if !old_path.exists() {
+            return Err(DomainError::FileNotFound);
+        }
+        
+        if let Some(parent) = new_path.parent() {
+            fs::create_dir_all(parent).await?;
+        }
+        
+        fs::rename(&old_path, &new_path).await?;
+        Ok(())
+    }
 }

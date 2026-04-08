@@ -343,4 +343,33 @@ impl FileService {
         }
         self.file_repo.dir_exists(&user.username, &resolved).await
     }
+
+    pub async fn rename(
+        &self,
+        user: &User,
+        cwd: &str,
+        old_name: &str,
+        new_name: &str,
+    ) -> Result<(), DomainError> {
+        let old_resolved = PermissionChecker::resolve_path(cwd, old_name);
+        let new_resolved = PermissionChecker::resolve_path(cwd, new_name);
+
+        if !PermissionChecker::is_safe_path(&old_resolved) || !PermissionChecker::is_safe_path(&new_resolved) {
+            return Err(DomainError::UnsafePath);
+        }
+
+        if Self::parse_shared(&old_resolved).is_some() || Self::parse_shared(&new_resolved).is_some() {
+            return Err(DomainError::PermissionDenied);
+        }
+
+        if let Some(existing) = self.file_repo.get_metadata(&user.username, &old_resolved).await {
+            if !PermissionChecker::can_access(user, &existing.owner, &Permission::Write) {
+                return Err(DomainError::PermissionDenied);
+            }
+        } else if !self.file_repo.dir_exists(&user.username, &old_resolved).await {
+            return Err(DomainError::FileNotFound);
+        }
+
+        self.file_repo.rename(&user.username, &old_resolved, &new_resolved).await
+    }
 }

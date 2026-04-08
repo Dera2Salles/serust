@@ -55,6 +55,20 @@ impl McpRegistry {
                 }),
             },
             McpTool {
+                name: "create_file".into(),
+                description: "Create a new text file on the FTP server.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "username": { "type": "string", "description": "Authenticated username" },
+                        "path": { "type": "string", "description": "Directory where the file will be created" },
+                        "filename": { "type": "string", "description": "Name of the new file" },
+                        "content": { "type": "string", "description": "Text content of the file" }
+                    },
+                    "required": ["username", "path", "filename", "content"]
+                }),
+            },
+            McpTool {
                 name: "delete_file".into(),
                 description: "Delete a file from the FTP server.".into(),
                 input_schema: json!({
@@ -81,6 +95,33 @@ impl McpRegistry {
                     "required": ["username", "query"]
                 }),
             },
+            McpTool {
+                name: "rename_file".into(),
+                description: "Rename a file or folder on the FTP server.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "username": { "type": "string", "description": "Authenticated username" },
+                        "path": { "type": "string", "description": "Directory containing the file or folder" },
+                        "old_name": { "type": "string", "description": "Current name of the file or folder" },
+                        "new_name": { "type": "string", "description": "New name of the file or folder" }
+                    },
+                    "required": ["username", "path", "old_name", "new_name"]
+                }),
+            },
+            McpTool {
+                name: "move_file".into(),
+                description: "Move a file or folder from one location to another.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "username": { "type": "string", "description": "Authenticated username" },
+                        "source_path": { "type": "string", "description": "Current path of the file or folder" },
+                        "destination_path": { "type": "string", "description": "New destination path" }
+                    },
+                    "required": ["username", "source_path", "destination_path"]
+                }),
+            },
         ]
     }
 
@@ -90,8 +131,11 @@ impl McpRegistry {
             "list_directory" => self.tool_list_directory(args).await,
             "get_storage_stats" => self.tool_get_storage_stats(args).await,
             "create_folder" => self.tool_create_folder(args).await,
+            "create_file" => self.tool_create_file(args).await,
             "delete_file" => self.tool_delete_file(args).await,
             "search_files" => self.tool_search_files(args).await,
+            "rename_file" => self.tool_rename_file(args).await,
+            "move_file" => self.tool_move_file(args).await,
             _ => McpToolResult::error(format!("Unknown tool: {}", name)),
         }
     }
@@ -268,6 +312,34 @@ impl McpRegistry {
         }
     }
 
+    async fn tool_create_file(&self, args: &Value) -> McpToolResult {
+        let username = match Self::get_str(args, "username") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let path = match Self::get_str(args, "path") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let filename = match Self::get_str(args, "filename") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let content = match Self::get_str(args, "content") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+
+        let user = Self::make_user(username);
+        let data = content.as_bytes().to_vec();
+        let size = data.len() as u64;
+
+        match self.file_service.upload(&user, path, filename, size, data).await {
+            Ok(_) => McpToolResult::success(format!("File '{}' created.", filename)),
+            Err(e) => McpToolResult::error(format!("Error: {}", e)),
+        }
+    }
+
     async fn tool_delete_file(&self, args: &Value) -> McpToolResult {
         let username = match Self::get_str(args, "username") {
             Ok(v) => v,
@@ -309,6 +381,53 @@ impl McpRegistry {
             McpToolResult::success("No matches found.")
         } else {
             McpToolResult::success(format!("Matches:\n{}", matches.join("\n")))
+        }
+    }
+
+    async fn tool_rename_file(&self, args: &Value) -> McpToolResult {
+        let username = match Self::get_str(args, "username") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let path = match Self::get_str(args, "path") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let old_name = match Self::get_str(args, "old_name") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let new_name = match Self::get_str(args, "new_name") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+
+        let user = Self::make_user(username);
+        match self.file_service.rename(&user, path, old_name, new_name).await {
+            Ok(_) => McpToolResult::success(format!("Renamed '{}' to '{}'.", old_name, new_name)),
+            Err(e) => McpToolResult::error(format!("Error: {}", e)),
+        }
+    }
+
+    async fn tool_move_file(&self, args: &Value) -> McpToolResult {
+        let username = match Self::get_str(args, "username") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let source_path = match Self::get_str(args, "source_path") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let destination_path = match Self::get_str(args, "destination_path") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+
+        let user = Self::make_user(username);
+        // source_path and destination_path are absolute, so we can use "/" as cwd.
+        match self.file_service.rename(&user, "/", source_path, destination_path).await {
+            Ok(_) => McpToolResult::success(format!("Moved '{}' to '{}'.", source_path, destination_path)),
+            Err(e) => McpToolResult::error(format!("Error: {}", e)),
         }
     }
 
