@@ -30,7 +30,7 @@ pub async fn setup_injection() -> Result<Services> {
     info!("Initialisation de la base de données SQLite...");
     let db = Database::new("sqlite:development.db").await?;
     let db_user_repo = Arc::new(DbUserRepository::new(db.clone()));
-    let db_file_repo = DbFileRepository::new(db.clone());
+    let db_file_repo = Arc::new(DbFileRepository::new(db.clone()));
     let db_share_repo = DbShareRepository::new(db.clone());
     let db_log_repo = DbAccessLogRepository::new(db.clone());
 
@@ -39,6 +39,8 @@ pub async fn setup_injection() -> Result<Services> {
     let file_service = Arc::new(FileService::new(
         Arc::clone(&file_repo),
         Arc::clone(&share_service),
+        Arc::clone(&db_file_repo),
+        Arc::clone(&db_user_repo),
     ));
 
     for (name, pass) in [
