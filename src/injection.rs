@@ -1,9 +1,15 @@
 use crate::database::{
     domain::{DbAccessLog, DbFileMetadata, DbShareGrant, DbShareLink, DbUser},
-    AccessLogRepository as DbAccessLogRepository, Database,
-    FileDatabaseRepository as DbFileRepository, IAccessLogRepository,
-    IFileDatabaseRepository, IShareDatabaseRepository, IUserRepository,
-    ShareDatabaseRepository as DbShareRepository, UserDatabaseRepository as DbUserRepository,
+    access_log_repository::AccessLogRepository as DbAccessLogRepository,
+    file_repository::FileRepository as DbFileRepository,
+    share_repository::ShareRepository as DbShareRepository,
+    user_repository::UserRepository as DbUserRepository,
+    Database, DatabaseService,
+    interfaces::{IAccessLogRepository, IFileDatabaseRepository, IShareDatabaseRepository, IUserRepository},
+    user_usecases::{CreateUserUseCase, FindUserUseCase},
+    file_usecases::{CreateFileUseCase, FindFileUseCase},
+    share_usecases::{CreateLinkUseCase, CreateGrantUseCase},
+    log_usecases::LogAccessUseCase,
 };
 use crate::file::local_repository::FileRepository;
 use crate::file::service::FileService;
@@ -18,6 +24,7 @@ pub struct Services {
     pub auth_service: Arc<AuthService>,
     pub file_service: Arc<FileService>,
     pub share_service: Arc<ShareService>,
+    pub db_service: Arc<DatabaseService>,
 }
 
 pub async fn setup_injection() -> Result<Services> {
@@ -26,12 +33,34 @@ pub async fn setup_injection() -> Result<Services> {
 
     info!("Initialisation de la base de données SQLite...");
     let db = Database::new("sqlite:development.db").await?;
+    
+    // Repositories
     let db_user_repo = Arc::new(DbUserRepository::new(db.clone()));
     let db_file_repo = Arc::new(DbFileRepository::new(db.clone()));
     let db_share_repo = DbShareRepository::new(db.clone());
     let db_log_repo = DbAccessLogRepository::new(db.clone());
 
-    let auth_service = Arc::new(AuthService::new(Arc::clone(&db_user_repo)));
+    // Database Use Cases
+    let create_user_usecase = Arc::new(CreateUserUseCase::new(Arc::clone(&db_user_repo) as Arc<dyn IUserRepository>));
+    let find_user_usecase = Arc::new(FindUserUseCase::new(Arc::clone(&db_user_repo) as Arc<dyn IUserRepository>));
+    let create_file_usecase = Arc::new(CreateFileUseCase::new(Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>));
+    let find_file_usecase = Arc::new(FindFileUseCase::new(Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>));
+    let create_link_usecase = Arc::new(CreateLinkUseCase::new(Arc::new(db_share_repo.clone()) as Arc<dyn IShareDatabaseRepository>));
+    let create_grant_usecase = Arc::new(CreateGrantUseCase::new(Arc::new(db_share_repo.clone()) as Arc<dyn IShareDatabaseRepository>));
+    let log_access_usecase = Arc::new(LogAccessUseCase::new(Arc::new(db_log_repo.clone()) as Arc<dyn IAccessLogRepository>));
+
+    let db_service = Arc::new(DatabaseService::new(
+        Arc::clone(&create_user_usecase),
+        Arc::clone(&find_user_usecase),
+        Arc::clone(&create_file_usecase),
+        Arc::clone(&find_file_usecase),
+        Arc::clone(&create_link_usecase),
+        Arc::clone(&create_grant_usecase),
+        Arc::clone(&log_access_usecase),
+    ));
+
+    // Services
+    let auth_service = Arc::new(AuthService::new(Arc::clone(&find_user_usecase), Arc::clone(&create_user_usecase)));
     let share_service = Arc::new(ShareService::new(Arc::clone(&share_repo)));
 
     // File Use Cases
@@ -42,8 +71,8 @@ pub async fn setup_injection() -> Result<Services> {
     let upload_usecase = Arc::new(crate::file::UploadUseCase::new(
         Arc::clone(&file_repo),
         Arc::clone(&share_service),
-        Arc::clone(&db_file_repo),
-        Arc::clone(&db_user_repo),
+        Arc::clone(&create_file_usecase),
+        Arc::clone(&find_user_usecase),
     ));
     let list_usecase = Arc::new(crate::file::ListUseCase::new(
         Arc::clone(&file_repo),
@@ -52,8 +81,8 @@ pub async fn setup_injection() -> Result<Services> {
     let mkdir_usecase = Arc::new(crate::file::MkdirUseCase::new(
         Arc::clone(&file_repo),
         Arc::clone(&share_service),
-        Arc::clone(&db_file_repo),
-        Arc::clone(&db_user_repo),
+        Arc::clone(&create_file_usecase),
+        Arc::clone(&find_user_usecase),
     ));
     let delete_usecase = Arc::new(crate::file::DeleteUseCase::new(
         Arc::clone(&file_repo),
@@ -85,8 +114,7 @@ pub async fn setup_injection() -> Result<Services> {
         dir_exists_usecase,
     ));
 
-
-
+    // Seed Data
     for (name, pass) in [
         ("alice", "alice123"),
         ("bob", "bob456"),
@@ -101,8 +129,8 @@ pub async fn setup_injection() -> Result<Services> {
     }
 
     let admin_username = "admin_dev";
-    if db_user_repo
-        .find_by_username(admin_username)
+    if find_user_usecase
+        .execute(admin_username)
         .await?
         .is_none()
     {
@@ -115,7 +143,7 @@ pub async fn setup_injection() -> Result<Services> {
             storage_quota_bytes: 1048576,
             is_active: true,
         };
-        db_user_repo.create(&dev_user).await?;
+        create_user_usecase.execute(&dev_user).await?;
 
         let dev_file = DbFileMetadata {
             id: uuid::Uuid::new_v4(),
@@ -129,8 +157,8 @@ pub async fn setup_injection() -> Result<Services> {
             updated_at: chrono::Utc::now(),
             is_deleted: false,
         };
-        db_file_repo.create(&dev_file).await?;
-        let _ = db_file_repo.find_by_id(dev_file.id).await;
+        create_file_usecase.execute(&dev_file).await?;
+        let _ = find_file_usecase.execute(dev_file.id).await;
 
         let dev_link = DbShareLink {
             id: uuid::Uuid::new_v4(),
@@ -146,7 +174,7 @@ pub async fn setup_injection() -> Result<Services> {
             password_hash: None,
             is_active: true,
         };
-        db_share_repo.create_link(&dev_link).await?;
+        create_link_usecase.execute(&dev_link).await?;
 
         let dev_grant = DbShareGrant {
             id: uuid::Uuid::new_v4(),
@@ -160,7 +188,7 @@ pub async fn setup_injection() -> Result<Services> {
             expires_at: None,
             granted_at: chrono::Utc::now(),
         };
-        db_share_repo.create_grant(&dev_grant).await?;
+        create_grant_usecase.execute(&dev_grant).await?;
 
         let dev_log = DbAccessLog {
             id: 0,
@@ -174,7 +202,7 @@ pub async fn setup_injection() -> Result<Services> {
             user_agent: None,
             bytes_transferred: None,
         };
-        db_log_repo.create(&dev_log).await?;
+        log_access_usecase.execute(&dev_log).await?;
 
         info!("Données SQLite de développement injectées avec succès.");
     }
@@ -183,5 +211,6 @@ pub async fn setup_injection() -> Result<Services> {
         auth_service,
         file_service,
         share_service,
+        db_service,
     })
 }

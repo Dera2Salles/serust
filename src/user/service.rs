@@ -1,6 +1,6 @@
 use crate::common::error::DomainError;
 use crate::database::domain::DbUser;
-use crate::database::{IUserRepository, UserDatabaseRepository as DbUserRepository};
+use crate::database::user_usecases::{CreateUserUseCase, FindUserUseCase};
 use crate::user::domain::User;
 use chrono::Utc;
 use sha2::{Digest, Sha256};
@@ -8,12 +8,13 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 pub struct AuthService {
-    user_repo: Arc<DbUserRepository>,
+    find_user: Arc<FindUserUseCase>,
+    create_user: Arc<CreateUserUseCase>,
 }
 
 impl AuthService {
-    pub fn new(user_repo: Arc<DbUserRepository>) -> Self {
-        Self { user_repo }
+    pub fn new(find_user: Arc<FindUserUseCase>, create_user: Arc<CreateUserUseCase>) -> Self {
+        Self { find_user, create_user }
     }
 
     pub fn hash_password(password: &str) -> String {
@@ -24,7 +25,7 @@ impl AuthService {
 
     pub async fn login(&self, username: &str, password: &str) -> Result<User, DomainError> {
         let hash = Self::hash_password(password);
-        match self.user_repo.find_by_username(username).await {
+        match self.find_user.execute(username).await {
             Ok(Some(db_user)) if db_user.password_hash == hash => Ok(User {
                 username: db_user.username,
                 password_hash: db_user.password_hash,
@@ -44,8 +45,8 @@ impl AuthService {
             storage_quota_bytes: 0,
             is_active: true,
         };
-        self.user_repo
-            .create(&dev_user)
+        self.create_user
+            .execute(&dev_user)
             .await
             .map_err(|e| DomainError::Internal(e.to_string()))
     }

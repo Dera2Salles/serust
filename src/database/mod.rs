@@ -4,12 +4,16 @@ pub mod access_log_repository;
 pub mod file_repository;
 pub mod share_repository;
 pub mod user_repository;
+pub mod user_usecases;
+pub mod file_usecases;
+pub mod share_usecases;
+pub mod log_usecases;
+pub mod service;
 
-pub use access_log_repository::AccessLogRepository;
 pub use file_repository::FileRepository as FileDatabaseRepository;
-pub use share_repository::ShareRepository as ShareDatabaseRepository;
 pub use user_repository::UserRepository as UserDatabaseRepository;
 pub use interfaces::*;
+pub use service::DatabaseService;
 
 
 use anyhow::Result;

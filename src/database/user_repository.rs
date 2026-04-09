@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use sqlx::Row;
 use uuid::Uuid;
 
+#[derive(Clone)]
 pub struct UserRepository {
     db: Database,
 }

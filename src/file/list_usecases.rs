@@ -13,7 +13,7 @@ pub struct ListUseCase {
 impl ListUseCase {
     pub fn new(
         file_repo: Arc<FileRepository>,
-        shares: Arc<ShareService>,  
+        shares: Arc<ShareService>,
     ) -> Self {
         Self {
             file_repo,

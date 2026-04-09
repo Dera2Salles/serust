@@ -1,10 +1,8 @@
 use crate::common::error::DomainError;
 use crate::common::permission::{Permission, PermissionChecker};
 use crate::database::domain::DbFileMetadata;
-use crate::database::{
-    FileDatabaseRepository as DbFileRepository, UserDatabaseRepository as DbUserRepository,
-    IFileDatabaseRepository, IUserRepository,
-};
+use crate::database::file_usecases::CreateFileUseCase;
+use crate::database::user_usecases::FindUserUseCase;
 use crate::file::local_repository::FileRepository;
 use crate::share::service::ShareService;
 use crate::user::domain::User;
@@ -13,22 +11,22 @@ use std::sync::Arc;
 pub struct MkdirUseCase {
     file_repo: Arc<FileRepository>,
     shares: Arc<ShareService>,
-    db_file_repo: Arc<DbFileRepository>,
-    user_repo: Arc<DbUserRepository>,
+    create_db_file: Arc<CreateFileUseCase>,
+    find_db_user: Arc<FindUserUseCase>,
 }
 
 impl MkdirUseCase {
     pub fn new(
         file_repo: Arc<FileRepository>,
         shares: Arc<ShareService>,
-        db_file_repo: Arc<DbFileRepository>,
-        user_repo: Arc<DbUserRepository>,
+        create_db_file: Arc<CreateFileUseCase>,
+        find_db_user: Arc<FindUserUseCase>,
     ) -> Self {
         Self {
             file_repo,
             shares,
-            db_file_repo,
-            user_repo,
+            create_db_file,
+            find_db_user,
         }
     }
 
@@ -44,8 +42,8 @@ impl MkdirUseCase {
     }
 
     async fn get_user_id(&self, username: &str) -> Result<uuid::Uuid, DomainError> {
-        self.user_repo
-            .find_by_username(username)
+        self.find_db_user
+            .execute(username)
             .await
             .map_err(|e| DomainError::Internal(e.to_string()))?
             .map(|u| u.id)
@@ -94,7 +92,7 @@ impl MkdirUseCase {
             updated_at: chrono::Utc::now(),
             is_deleted: false,
         };
-        let _ = self.db_file_repo.create(&db_entry).await;
+        let _ = self.create_db_file.execute(&db_entry).await;
 
         Ok(())
     }

@@ -1,10 +1,8 @@
 use crate::common::error::DomainError;
 use crate::common::permission::{Permission, PermissionChecker};
 use crate::database::domain::DbFileMetadata;
-use crate::database::{
-    FileDatabaseRepository as DbFileRepository, UserDatabaseRepository as DbUserRepository,
-    IFileDatabaseRepository, IUserRepository,
-};
+use crate::database::file_usecases::CreateFileUseCase;
+use crate::database::user_usecases::FindUserUseCase;
 use crate::file::domain::FileMetadata;
 use crate::file::local_repository::FileRepository;
 use crate::share::service::ShareService;
@@ -16,22 +14,22 @@ const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024;
 pub struct UploadUseCase {
     file_repo: Arc<FileRepository>,
     shares: Arc<ShareService>,
-    db_file_repo: Arc<DbFileRepository>,
-    user_repo: Arc<DbUserRepository>,
+    create_db_file: Arc<CreateFileUseCase>,
+    find_db_user: Arc<FindUserUseCase>,
 }
 
 impl UploadUseCase {
     pub fn new(
         file_repo: Arc<FileRepository>,
         shares: Arc<ShareService>,
-        db_file_repo: Arc<DbFileRepository>,
-        user_repo: Arc<DbUserRepository>,
+        create_db_file: Arc<CreateFileUseCase>,
+        find_db_user: Arc<FindUserUseCase>,
     ) -> Self {
         Self {
             file_repo,
             shares,
-            db_file_repo,
-            user_repo,
+            create_db_file,
+            find_db_user,
         }
     }
 
@@ -47,8 +45,8 @@ impl UploadUseCase {
     }
 
     async fn get_user_id(&self, username: &str) -> Result<uuid::Uuid, DomainError> {
-        self.user_repo
-            .find_by_username(username)
+        self.find_db_user
+            .execute(username)
             .await
             .map_err(|e| DomainError::Internal(e.to_string()))?
             .map(|u| u.id)
@@ -106,7 +104,7 @@ impl UploadUseCase {
             updated_at: chrono::Utc::now(),
             is_deleted: false,
         };
-        let _ = self.db_file_repo.create(&db_entry).await;
+        let _ = self.create_db_file.execute(&db_entry).await;
 
         Ok(())
     }

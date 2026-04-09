@@ -4,6 +4,7 @@ use crate::database::Database;
 use anyhow::Result;
 use async_trait::async_trait;
 
+#[derive(Clone)]
 pub struct ShareRepository {
     db: Database,
 }

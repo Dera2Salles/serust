@@ -1,5 +1,7 @@
 use crate::common::error::DomainError;
 use crate::file::domain::FileMetadata;
+use crate::file::interfaces::IFileRepository;
+use async_trait::async_trait;
 use std::path::PathBuf;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
@@ -144,5 +146,61 @@ impl FileRepository {
         
         fs::rename(&old_path, &new_path).await?;
         Ok(())
+    }
+}
+
+#[async_trait]
+impl IFileRepository for FileRepository {
+    async fn store(&self, meta: FileMetadata, data: Vec<u8>) -> Result<(), DomainError> {
+        self.store(meta, data).await
+    }
+
+    async fn load(&self, username: &str, rel_path: &str) -> Result<Vec<u8>, DomainError> {
+        self.load(username, rel_path).await
+    }
+
+    async fn delete_file(&self, username: &str, rel_path: &str) -> Result<(), DomainError> {
+        self.delete_file(username, rel_path).await
+    }
+
+    async fn rename(
+        &self,
+        username: &str,
+        old_rel_path: &str,
+        new_rel_path: &str,
+    ) -> Result<(), DomainError> {
+        self.rename(username, old_rel_path, new_rel_path).await
+    }
+
+    async fn stat(
+        &self,
+        username: &str,
+        rel_path: &str,
+    ) -> Result<Option<(u64, bool)>, DomainError> {
+        self.stat(username, rel_path).await
+    }
+
+    async fn create_dir(&self, username: &str, rel_path: &str) -> Result<(), DomainError> {
+        self.create_dir(username, rel_path).await
+    }
+
+    async fn remove_dir(&self, username: &str, rel_path: &str) -> Result<(), DomainError> {
+        self.remove_dir(username, rel_path).await
+    }
+
+    async fn dir_exists(&self, username: &str, rel_path: &str) -> bool {
+        self.dir_exists(username, rel_path).await
+    }
+
+    async fn list_entries(
+        &self,
+        username: &str,
+        rel_path: &str,
+    ) -> Result<Vec<(String, bool)>, DomainError> {
+        self.list_entries(username, rel_path).await
+    }
+
+    async fn get_metadata(&self, username: &str, rel_path: &str) -> Option<FileMetadata> {
+        self.get_metadata(username, rel_path).await
     }
 }
