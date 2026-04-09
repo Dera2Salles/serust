@@ -1,6 +1,8 @@
-use crate::database::models::DbFileMetadata;
+use crate::database::domain::DbFileMetadata;
+use crate::database::interfaces::IFileDatabaseRepository;
 use crate::database::Database;
 use anyhow::Result;
+use async_trait::async_trait;
 use sqlx::Row;
 use uuid::Uuid;
 
@@ -12,8 +14,11 @@ impl FileRepository {
     pub fn new(db: Database) -> Self {
         Self { db }
     }
+}
 
-    pub async fn create(&self, file: &DbFileMetadata) -> Result<()> {
+#[async_trait]
+impl IFileDatabaseRepository for FileRepository {
+    async fn create(&self, file: &DbFileMetadata) -> Result<()> {
         let id_str = file.id.to_string();
         let owner_str = file.owner_id.to_string();
 
@@ -35,7 +40,7 @@ impl FileRepository {
         Ok(())
     }
 
-    pub async fn find_by_id(&self, id: Uuid) -> Result<Option<DbFileMetadata>> {
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<DbFileMetadata>> {
         let id_str = id.to_string();
         let row = sqlx::query(
             "SELECT id, owner_id, filename, storage_path, size_bytes, mime_type, checksum, created_at, updated_at, is_deleted FROM files WHERE id = ?"

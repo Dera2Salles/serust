@@ -1,102 +1,55 @@
 use crate::common::error::DomainError;
-use crate::common::permission::{Permission, PermissionChecker};
-use crate::database::models::DbFileMetadata;
-use crate::database::repositories::{
-    file_repo::FileRepository as DbFileRepository, user_repo::UserRepository as DbUserRepository,
+use crate::file::{
+    DeleteUseCase, DirExistsUseCase, DownloadUseCase, ListUseCase, MkdirUseCase, RemoveDirUseCase,
+    RenameUseCase, StatUseCase, UploadUseCase,
 };
-use crate::file::domain::FileMetadata;
-use crate::file::local_repository::FileRepository;
-use crate::share::service::ShareService;
 use crate::user::domain::User;
 use std::sync::Arc;
 
-const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024;
-
 pub struct FileService {
-    file_repo: Arc<FileRepository>,
-    shares: Arc<ShareService>,
-    db_file_repo: Arc<DbFileRepository>,
-    user_repo: Arc<DbUserRepository>,
+    download: Arc<DownloadUseCase>,
+    upload: Arc<UploadUseCase>,
+    list: Arc<ListUseCase>,
+    mkdir: Arc<MkdirUseCase>,
+    delete: Arc<DeleteUseCase>,
+    stat: Arc<StatUseCase>,
+    rename: Arc<RenameUseCase>,
+    rmdir: Arc<RemoveDirUseCase>,
+    dir_exists: Arc<DirExistsUseCase>,
 }
 
 impl FileService {
     pub fn new(
-        file_repo: Arc<FileRepository>,
-        shares: Arc<ShareService>,
-        db_file_repo: Arc<DbFileRepository>,
-        user_repo: Arc<DbUserRepository>,
+        download: Arc<DownloadUseCase>,
+        upload: Arc<UploadUseCase>,
+        list: Arc<ListUseCase>,
+        mkdir: Arc<MkdirUseCase>,
+        delete: Arc<DeleteUseCase>,
+        stat: Arc<StatUseCase>,
+        rename: Arc<RenameUseCase>,
+        rmdir: Arc<RemoveDirUseCase>,
+        dir_exists: Arc<DirExistsUseCase>,
     ) -> Self {
         Self {
-            file_repo,
-            shares,
-            db_file_repo,
-            user_repo,
+            download,
+            upload,
+            list,
+            mkdir,
+            delete,
+            stat,
+            rename,
+            rmdir,
+            dir_exists,
         }
     }
 
-    fn parse_shared(resolved: &str) -> Option<(String, String)> {
-        let rest = resolved.strip_prefix("shared/")?;
-        let mut parts = rest.splitn(2, '/');
-        let owner = parts.next()?.to_string();
-        let inner = parts.next().unwrap_or("").to_string();
-        if owner.is_empty() {
-            return None;
-        }
-        Some((owner, inner))
-    }
-
-    async fn get_user_id(&self, username: &str) -> Result<uuid::Uuid, DomainError> {
-        self.user_repo
-            .find_by_username(username)
-            .await
-            .map_err(|e| DomainError::Internal(e.to_string()))?
-            .map(|u| u.id)
-            .ok_or(DomainError::InvalidCredentials)
-    }
-
-    async fn list_shared_children(
+    pub async fn download(
         &self,
         user: &User,
-        owner: &str,
-        inner_dir: &str,
-    ) -> Result<Vec<(String, bool)>, DomainError> {
-        let grants = self.shares.list_incoming(&user.username).await;
-        let mut children: Vec<String> = Vec::new();
-        let prefix = if inner_dir.is_empty() {
-            "".to_string()
-        } else {
-            format!("{}/", inner_dir.trim_end_matches('/'))
-        };
-
-        for g in grants.into_iter().filter(|g| g.owner == owner) {
-            if !g.path.starts_with(&prefix) {
-                continue;
-            }
-            let rest = &g.path[prefix.len()..];
-            let child = rest.split('/').next().unwrap_or("").trim();
-            if !child.is_empty() {
-                children.push(child.to_string());
-            }
-        }
-
-        children.sort();
-        children.dedup();
-
-        let mut result = Vec::new();
-        for child in children {
-            let child_path = if inner_dir.is_empty() {
-                child.clone()
-            } else {
-                format!("{}/{}", inner_dir.trim_end_matches('/'), child)
-            };
-            let is_dir = match self.file_repo.stat(owner, &child_path).await? {
-                Some((_size, is_dir)) => is_dir,
-                None => false,
-            };
-            result.push((child, is_dir));
-        }
-
-        Ok(result)
+        cwd: &str,
+        filename: &str,
+    ) -> Result<Vec<u8>, DomainError> {
+        self.download.execute(user, cwd, filename).await
     }
 
     pub async fn upload(
@@ -107,302 +60,28 @@ impl FileService {
         size: u64,
         data: Vec<u8>,
     ) -> Result<(), DomainError> {
-        let resolved = PermissionChecker::resolve_path(cwd, filename);
-        if !PermissionChecker::is_safe_path(&resolved) {
-            return Err(DomainError::UnsafePath);
-        }
-        if size > MAX_FILE_SIZE {
-            return Err(DomainError::FileTooLarge);
-        }
-        if let Some((owner, inner)) = Self::parse_shared(&resolved) {
-            if !self.shares.can_write(&user.username, &owner, &inner).await {
-                return Err(DomainError::PermissionDenied);
-            }
-            self.shares
-                .consume_write(&user.username, &owner, &inner)
-                .await?;
-            let meta = FileMetadata::new(&inner, size, &owner);
-            return self.file_repo.store(meta, data).await;
-        }
-
-        if let Some(existing) = self.file_repo.get_metadata(&user.username, &resolved).await {
-            if !PermissionChecker::can_access(user, &existing.owner, &Permission::Write) {
-                return Err(DomainError::PermissionDenied);
-            }
-        }
-
-        let meta = FileMetadata::new(&resolved, size, &user.username);
-        self.file_repo.store(meta, data).await?;
-
-        // Sync with Database
-        let owner_id = self.get_user_id(&user.username).await?;
-        let db_entry = DbFileMetadata {
-            id: uuid::Uuid::new_v4(),
-            owner_id,
-            filename: filename.to_string(),
-            storage_path: format!("/{}", resolved),
-            size_bytes: size as i64,
-            mime_type: Some("application/octet-stream".into()),
-            checksum: None,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            is_deleted: false,
-        };
-        let _ = self.db_file_repo.create(&db_entry).await;
-
-        Ok(())
+        self.upload.execute(user, cwd, filename, size, data).await
     }
 
-    pub async fn download(
-        &self,
-        user: &User,
-        cwd: &str,
-        filename: &str,
-    ) -> Result<Vec<u8>, DomainError> {
-        let resolved = PermissionChecker::resolve_path(cwd, filename);
-        if !PermissionChecker::is_safe_path(&resolved) {
-            return Err(DomainError::UnsafePath);
-        }
-        if let Some((owner, inner)) = Self::parse_shared(&resolved) {
-            if !self
-                .shares
-                .can_download(&user.username, &owner, &inner)
-                .await
-            {
-                return Err(DomainError::PermissionDenied);
-            }
-            let data = self.file_repo.load(&owner, &inner).await?;
-            self.shares
-                .consume_download(&user.username, &owner, &inner)
-                .await?;
-            return Ok(data);
-        }
-
-        let meta = self
-            .file_repo
-            .get_metadata(&user.username, &resolved)
-            .await
-            .ok_or(DomainError::FileNotFound)?;
-
-        if !PermissionChecker::can_access(user, &meta.owner, &Permission::Read) {
-            return Err(DomainError::PermissionDenied);
-        }
-        let data = self.file_repo.load(&user.username, &resolved).await?;
-
-        let log_event =
-            crate::log::domain::AccessLog::new_download_event(uuid::Uuid::new_v4(), None);
-        tracing::debug!("Domain access log recorded: {:?}", log_event);
-
-        Ok(data)
-    }
-
-    /// List entries (files + dirs) in the current working directory.
     pub async fn list(&self, user: &User, cwd: &str) -> Result<Vec<(String, bool)>, DomainError> {
-        let resolved = PermissionChecker::resolve_path(cwd, "");
-        if resolved.is_empty() {
-            let mut entries = self.file_repo.list_entries(&user.username, "").await?;
-            if !entries.iter().any(|(n, is_dir)| n == "shared" && *is_dir) {
-                entries.push(("shared".to_string(), true));
-            }
-            entries.sort_by(|a, b| a.0.cmp(&b.0));
-            return Ok(entries);
-        }
-
-        if resolved == "shared" {
-            let owners = self.shares.owners_shared_with(&user.username).await;
-            return Ok(owners.into_iter().map(|o| (o, true)).collect());
-        }
-
-        if let Some((owner, inner)) = Self::parse_shared(&resolved) {
-            if inner.is_empty() {
-                let allowed = self
-                    .shares
-                    .owners_shared_with(&user.username)
-                    .await
-                    .into_iter()
-                    .any(|o| o == owner);
-                if !allowed {
-                    return Err(DomainError::PermissionDenied);
-                }
-                return Ok(self.list_shared_children(user, &owner, "").await?);
-            }
-
-            if !self.shares.can_read(&user.username, &owner, &inner).await {
-                return Err(DomainError::PermissionDenied);
-            }
-            let children = self.list_shared_children(user, &owner, &inner).await?;
-            self.shares
-                .consume_read(&user.username, &owner, &inner)
-                .await?;
-            return Ok(children);
-        }
-
-        self.file_repo.list_entries(&user.username, &resolved).await
+        self.list.execute(user, cwd).await
     }
 
-    /// List only regular files (no directories) in the current working directory.
-    pub async fn list_files(&self, user: &User, cwd: &str) -> Result<Vec<String>, DomainError> {
-        let resolved = PermissionChecker::resolve_path(cwd, "");
-        if let Some((owner, inner)) = Self::parse_shared(&resolved) {
-            if inner.is_empty() {
-                let allowed = self
-                    .shares
-                    .owners_shared_with(&user.username)
-                    .await
-                    .into_iter()
-                    .any(|o| o == owner);
-                if !allowed {
-                    return Err(DomainError::PermissionDenied);
-                }
-                return Ok(vec![]);
-            }
-            if !self.shares.can_read(&user.username, &owner, &inner).await {
-                return Err(DomainError::PermissionDenied);
-            }
-            return Ok(vec![]);
-        }
-        self.file_repo.list_files(&user.username, &resolved).await
+    pub async fn mkdir(&self, user: &User, cwd: &str, dirname: &str) -> Result<(), DomainError> {
+        self.mkdir.execute(user, cwd, dirname).await
     }
 
-    /// Returns (size_bytes, is_dir) for a path, or `Ok(None)` if it doesn't exist.
+    pub async fn delete(&self, user: &User, cwd: &str, filename: &str) -> Result<(), DomainError> {
+        self.delete.execute(user, cwd, filename).await
+    }
+
     pub async fn stat(
         &self,
         user: &User,
         cwd: &str,
         target: &str,
     ) -> Result<Option<(u64, bool)>, DomainError> {
-        let resolved = PermissionChecker::resolve_path(cwd, target);
-        if !PermissionChecker::is_safe_path(&resolved) {
-            return Err(DomainError::UnsafePath);
-        }
-
-        if let Some((owner, inner)) = Self::parse_shared(&resolved) {
-            if !self.shares.can_read(&user.username, &owner, &inner).await {
-                return Ok(None);
-            }
-            return self.file_repo.stat(&owner, &inner).await;
-        }
-
-        self.file_repo.stat(&user.username, &resolved).await
-    }
-
-    pub async fn mkdir(&self, user: &User, cwd: &str, dirname: &str) -> Result<(), DomainError> {
-        let resolved = PermissionChecker::resolve_path(cwd, dirname);
-        if !PermissionChecker::is_safe_path(&resolved) {
-            return Err(DomainError::UnsafePath);
-        }
-        if resolved == "shared" {
-            return Err(DomainError::PermissionDenied);
-        }
-
-        if let Some((owner, inner)) = Self::parse_shared(&resolved) {
-            if !self.shares.can_write(&user.username, &owner, &inner).await {
-                return Err(DomainError::PermissionDenied);
-            }
-            self.shares
-                .consume_write(&user.username, &owner, &inner)
-                .await?;
-            return self.file_repo.create_dir(&owner, &inner).await;
-        }
-        if let Some(existing) = self.file_repo.get_metadata(&user.username, &resolved).await {
-            if !PermissionChecker::can_access(user, &existing.owner, &Permission::Write) {
-                return Err(DomainError::PermissionDenied);
-            }
-        }
-        self.file_repo.create_dir(&user.username, &resolved).await?;
-
-        // Sync with Database
-        let owner_id = self.get_user_id(&user.username).await?;
-        let db_entry = DbFileMetadata {
-            id: uuid::Uuid::new_v4(),
-            owner_id,
-            filename: dirname.to_string(),
-            storage_path: format!("/{}", resolved),
-            size_bytes: 0,
-            mime_type: Some("inode/directory".into()),
-            checksum: None,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            is_deleted: false,
-        };
-        let _ = self.db_file_repo.create(&db_entry).await;
-
-        Ok(())
-    }
-
-    pub async fn rmdir(&self, user: &User, cwd: &str, dirname: &str) -> Result<(), DomainError> {
-        let resolved = PermissionChecker::resolve_path(cwd, dirname);
-        if !PermissionChecker::is_safe_path(&resolved) {
-            return Err(DomainError::UnsafePath);
-        }
-        if let Some((owner, inner)) = Self::parse_shared(&resolved) {
-            if !self.shares.can_write(&user.username, &owner, &inner).await {
-                return Err(DomainError::PermissionDenied);
-            }
-            self.shares
-                .consume_write(&user.username, &owner, &inner)
-                .await?;
-            return self.file_repo.remove_dir(&owner, &inner).await;
-        }
-
-        if let Some(existing) = self.file_repo.get_metadata(&user.username, &resolved).await {
-            if !PermissionChecker::can_access(user, &existing.owner, &Permission::Write) {
-                return Err(DomainError::PermissionDenied);
-            }
-        }
-        self.file_repo.remove_dir(&user.username, &resolved).await
-    }
-
-    pub async fn delete_file(
-        &self,
-        user: &User,
-        cwd: &str,
-        filename: &str,
-    ) -> Result<(), DomainError> {
-        let resolved = PermissionChecker::resolve_path(cwd, filename);
-        if !PermissionChecker::is_safe_path(&resolved) {
-            return Err(DomainError::UnsafePath);
-        }
-        if let Some((owner, inner)) = Self::parse_shared(&resolved) {
-            if !self.shares.can_write(&user.username, &owner, &inner).await {
-                return Err(DomainError::PermissionDenied);
-            }
-            self.shares
-                .consume_write(&user.username, &owner, &inner)
-                .await?;
-            return self.file_repo.delete_file(&owner, &inner).await;
-        }
-
-        if let Some(existing) = self.file_repo.get_metadata(&user.username, &resolved).await {
-            if !PermissionChecker::can_access(user, &existing.owner, &Permission::Write) {
-                return Err(DomainError::PermissionDenied);
-            }
-        }
-        self.file_repo.delete_file(&user.username, &resolved).await
-        // TODO: Database deletion sync would require a way to find by path in DbFileRepository
-    }
-
-    /// Returns true if the given path (resolved from cwd) is an existing directory.
-    pub async fn dir_exists(&self, user: &User, cwd: &str, path: &str) -> bool {
-        let resolved = PermissionChecker::resolve_path(cwd, path);
-        if resolved.is_empty() || resolved == "shared" {
-            return true;
-        }
-        if let Some((owner, inner)) = Self::parse_shared(&resolved) {
-            if inner.is_empty() {
-                return self
-                    .shares
-                    .owners_shared_with(&user.username)
-                    .await
-                    .into_iter()
-                    .any(|o| o == owner);
-            }
-            if !self.shares.can_read(&user.username, &owner, &inner).await {
-                return false;
-            }
-            return self.file_repo.dir_exists(&owner, &inner).await;
-        }
-        self.file_repo.dir_exists(&user.username, &resolved).await
+        self.stat.execute(user, cwd, target).await
     }
 
     pub async fn rename(
@@ -412,25 +91,15 @@ impl FileService {
         old_name: &str,
         new_name: &str,
     ) -> Result<(), DomainError> {
-        let old_resolved = PermissionChecker::resolve_path(cwd, old_name);
-        let new_resolved = PermissionChecker::resolve_path(cwd, new_name);
+        self.rename.execute(user, cwd, old_name, new_name).await
+    }
 
-        if !PermissionChecker::is_safe_path(&old_resolved) || !PermissionChecker::is_safe_path(&new_resolved) {
-            return Err(DomainError::UnsafePath);
-        }
+    pub async fn rmdir(&self, user: &User, cwd: &str, dirname: &str) -> Result<(), DomainError> {
+        self.rmdir.execute(user, cwd, dirname).await
+    }
 
-        if Self::parse_shared(&old_resolved).is_some() || Self::parse_shared(&new_resolved).is_some() {
-            return Err(DomainError::PermissionDenied);
-        }
-
-        if let Some(existing) = self.file_repo.get_metadata(&user.username, &old_resolved).await {
-            if !PermissionChecker::can_access(user, &existing.owner, &Permission::Write) {
-                return Err(DomainError::PermissionDenied);
-            }
-        } else if !self.file_repo.dir_exists(&user.username, &old_resolved).await {
-            return Err(DomainError::FileNotFound);
-        }
-
-        self.file_repo.rename(&user.username, &old_resolved, &new_resolved).await
+    pub async fn dir_exists(&self, user: &User, cwd: &str, dirname: &str) -> bool {
+        self.dir_exists.execute(user, cwd, dirname).await
     }
 }
+

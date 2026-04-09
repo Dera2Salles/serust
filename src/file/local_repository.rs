@@ -85,19 +85,6 @@ impl FileRepository {
         Ok(result)
     }
 
-    /// Legacy: list only file names (kept for backward compat).
-    pub async fn list_files(
-        &self,
-        username: &str,
-        rel_path: &str,
-    ) -> Result<Vec<String>, DomainError> {
-        let entries = self.list_entries(username, rel_path).await?;
-        Ok(entries
-            .into_iter()
-            .filter(|(_, is_dir)| !is_dir)
-            .map(|(n, _)| n)
-            .collect())
-    }
 
     /// Returns (size_bytes, is_dir) for an entry, or `Ok(None)` if it doesn't exist.
     pub async fn stat(

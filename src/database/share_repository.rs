@@ -1,6 +1,8 @@
-use crate::database::models::{DbShareGrant, DbShareLink};
+use crate::database::domain::{DbShareGrant, DbShareLink};
+use crate::database::interfaces::IShareDatabaseRepository;
 use crate::database::Database;
 use anyhow::Result;
+use async_trait::async_trait;
 
 pub struct ShareRepository {
     db: Database,
@@ -10,8 +12,11 @@ impl ShareRepository {
     pub fn new(db: Database) -> Self {
         Self { db }
     }
+}
 
-    pub async fn create_link(&self, link: &DbShareLink) -> Result<()> {
+#[async_trait]
+impl IShareDatabaseRepository for ShareRepository {
+    async fn create_link(&self, link: &DbShareLink) -> Result<()> {
         let id_str = link.id.to_string();
         let file_str = link.file_id.to_string();
         let created_str = link.created_by.to_string();
@@ -36,7 +41,7 @@ impl ShareRepository {
         Ok(())
     }
 
-    pub async fn create_grant(&self, grant: &DbShareGrant) -> Result<()> {
+    async fn create_grant(&self, grant: &DbShareGrant) -> Result<()> {
         let id_str = grant.id.to_string();
         let file_str = grant.file_id.to_string();
         let granted_by_str = grant.granted_by.to_string();

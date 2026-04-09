@@ -1,6 +1,8 @@
-use crate::database::models::DbAccessLog;
+use crate::database::domain::DbAccessLog;
+use crate::database::interfaces::IAccessLogRepository;
 use crate::database::Database;
 use anyhow::Result;
+use async_trait::async_trait;
 
 pub struct AccessLogRepository {
     db: Database,
@@ -10,8 +12,11 @@ impl AccessLogRepository {
     pub fn new(db: Database) -> Self {
         Self { db }
     }
+}
 
-    pub async fn create(&self, log: &DbAccessLog) -> Result<()> {
+#[async_trait]
+impl IAccessLogRepository for AccessLogRepository {
+    async fn create(&self, log: &DbAccessLog) -> Result<()> {
         let file_str = log.file_id.to_string();
         let accessed_str = log.accessed_by.map(|u| u.to_string());
         let link_str = log.share_link_id.map(|u| u.to_string());

@@ -355,7 +355,7 @@ impl McpRegistry {
         };
 
         let user = Self::make_user(username);
-        match self.file_service.delete_file(&user, path, filename).await {
+        match self.file_service.delete(&user, path, filename).await {
             Ok(_) => McpToolResult::success(format!("File '{}' deleted.", filename)),
             Err(e) => McpToolResult::error(format!("Error: {}", e)),
         }

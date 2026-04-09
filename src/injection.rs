@@ -1,12 +1,9 @@
 use crate::database::{
-    models::{DbAccessLog, DbFileMetadata, DbShareGrant, DbShareLink, DbUser},
-    repositories::{
-        access_log_repo::AccessLogRepository as DbAccessLogRepository,
-        file_repo::FileRepository as DbFileRepository,
-        share_repo::ShareRepository as DbShareRepository,
-        user_repo::UserRepository as DbUserRepository,
-    },
-    Database,
+    domain::{DbAccessLog, DbFileMetadata, DbShareGrant, DbShareLink, DbUser},
+    AccessLogRepository as DbAccessLogRepository, Database,
+    FileDatabaseRepository as DbFileRepository, IAccessLogRepository,
+    IFileDatabaseRepository, IShareDatabaseRepository, IUserRepository,
+    ShareDatabaseRepository as DbShareRepository, UserDatabaseRepository as DbUserRepository,
 };
 use crate::file::local_repository::FileRepository;
 use crate::file::service::FileService;
@@ -36,12 +33,59 @@ pub async fn setup_injection() -> Result<Services> {
 
     let auth_service = Arc::new(AuthService::new(Arc::clone(&db_user_repo)));
     let share_service = Arc::new(ShareService::new(Arc::clone(&share_repo)));
-    let file_service = Arc::new(FileService::new(
+
+    // File Use Cases
+    let download_usecase = Arc::new(crate::file::DownloadUseCase::new(
+        Arc::clone(&file_repo),
+        Arc::clone(&share_service),
+    ));
+    let upload_usecase = Arc::new(crate::file::UploadUseCase::new(
         Arc::clone(&file_repo),
         Arc::clone(&share_service),
         Arc::clone(&db_file_repo),
         Arc::clone(&db_user_repo),
     ));
+    let list_usecase = Arc::new(crate::file::ListUseCase::new(
+        Arc::clone(&file_repo),
+        Arc::clone(&share_service),
+    ));
+    let mkdir_usecase = Arc::new(crate::file::MkdirUseCase::new(
+        Arc::clone(&file_repo),
+        Arc::clone(&share_service),
+        Arc::clone(&db_file_repo),
+        Arc::clone(&db_user_repo),
+    ));
+    let delete_usecase = Arc::new(crate::file::DeleteUseCase::new(
+        Arc::clone(&file_repo),
+        Arc::clone(&share_service),
+    ));
+    let stat_usecase = Arc::new(crate::file::StatUseCase::new(
+        Arc::clone(&file_repo),
+        Arc::clone(&share_service),
+    ));
+    let rename_usecase = Arc::new(crate::file::RenameUseCase::new(
+        Arc::clone(&file_repo),
+    ));
+    let rmdir_usecase = Arc::new(crate::file::RemoveDirUseCase::new(
+        Arc::clone(&file_repo),
+    ));
+    let dir_exists_usecase = Arc::new(crate::file::DirExistsUseCase::new(
+        Arc::clone(&file_repo),
+    ));
+
+    let file_service = Arc::new(FileService::new(
+        download_usecase,
+        upload_usecase,
+        list_usecase,
+        mkdir_usecase,
+        delete_usecase,
+        stat_usecase,
+        rename_usecase,
+        rmdir_usecase,
+        dir_exists_usecase,
+    ));
+
+
 
     for (name, pass) in [
         ("alice", "alice123"),

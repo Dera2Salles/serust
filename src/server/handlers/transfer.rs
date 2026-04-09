@@ -266,7 +266,7 @@ impl Handler for NlstHandler {
         let user = make_user(ctx);
         let cwd = ctx.cwd.clone();
 
-        let files = match self.files.list_files(&user, &cwd).await {
+        let files = match self.files.list(&user, &cwd).await {
             Ok(e) => e,
             Err(e) => {
                 error!("NLST: {}", e);
@@ -291,11 +291,13 @@ impl Handler for NlstHandler {
             }
         };
 
-        for name in &files {
-            let line = format!("{}\r\n", name);
-            if let Err(_) = data_stream.write_all(line.as_bytes()).await {
-                ctx.error(426, "Connection closed; transfer aborted.");
-                return Ok(());
+        for (name, is_dir) in &files {
+            if !is_dir {
+                let line = format!("{}\r\n", name);
+                if let Err(_) = data_stream.write_all(line.as_bytes()).await {
+                    ctx.error(426, "Connection closed; transfer aborted.");
+                    return Ok(());
+                }
             }
         }
 
@@ -415,7 +417,7 @@ impl Handler for DeleHandler {
         let filename = args[0];
         let user = make_user(ctx);
         let cwd = ctx.cwd.clone();
-        match self.files.delete_file(&user, &cwd, filename).await {
+        match self.files.delete(&user, &cwd, filename).await {
             Ok(_) => ctx.write_line("250 File deleted."),
             Err(e) => {
                 error!("DELE: {}", e);
@@ -488,23 +490,13 @@ impl Handler for RntoHandler {
         let user = make_user(ctx);
         let cwd = ctx.cwd.clone();
 
-        match self.files.download(&user, &cwd, &from).await {
-            Ok(data) => {
-                let size = data.len() as u64;
-                match self.files.upload(&user, &cwd, to, size, data).await {
-                    Ok(_) => {
-                        let _ = self.files.delete_file(&user, &cwd, &from).await;
-                        ctx.write_line("250 Rename successful.");
-                    }
-                    Err(e) => {
-                        error!("RNTO upload: {}", e);
-                        ctx.error(553, "Rename failed.");
-                    }
-                }
+        match self.files.rename(&user, &cwd, &from, to).await {
+            Ok(_) => {
+                ctx.write_line("250 Rename successful.");
             }
             Err(e) => {
-                error!("RNTO download: {}", e);
-                ctx.error(550, "Source file not found.");
+                error!("RNTO rename: {}", e);
+                ctx.error(550, "Rename failed.");
             }
         }
         Ok(())

@@ -1,6 +1,8 @@
-use crate::database::models::DbUser;
+use crate::database::domain::DbUser;
+use crate::database::interfaces::IUserRepository;
 use crate::database::Database;
 use anyhow::Result;
+use async_trait::async_trait;
 use sqlx::Row;
 use uuid::Uuid;
 
@@ -12,8 +14,11 @@ impl UserRepository {
     pub fn new(db: Database) -> Self {
         Self { db }
     }
+}
 
-    pub async fn create(&self, user: &DbUser) -> Result<()> {
+#[async_trait]
+impl IUserRepository for UserRepository {
+    async fn create(&self, user: &DbUser) -> Result<()> {
         let id_str = user.id.to_string();
         sqlx::query(
             "INSERT INTO users (id, username, password_hash, email, created_at, storage_quota_bytes, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)"
@@ -30,7 +35,7 @@ impl UserRepository {
         Ok(())
     }
 
-    pub async fn find_by_username(&self, username: &str) -> Result<Option<DbUser>> {
+    async fn find_by_username(&self, username: &str) -> Result<Option<DbUser>> {
         let row = sqlx::query(
             "SELECT id, username, password_hash, email, created_at, storage_quota_bytes, is_active FROM users WHERE username = ?"
         )

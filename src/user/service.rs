@@ -1,6 +1,6 @@
 use crate::common::error::DomainError;
-use crate::database::models::DbUser;
-use crate::database::repositories::user_repo::UserRepository as DbUserRepository;
+use crate::database::domain::DbUser;
+use crate::database::{IUserRepository, UserDatabaseRepository as DbUserRepository};
 use crate::user::domain::User;
 use chrono::Utc;
 use sha2::{Digest, Sha256};
