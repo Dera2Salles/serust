@@ -8,12 +8,6 @@ pub mod user_usecases;
 pub mod file_usecases;
 pub mod share_usecases;
 pub mod log_usecases;
-pub mod service;
-
-pub use file_repository::FileRepository as FileDatabaseRepository;
-pub use user_repository::UserRepository as UserDatabaseRepository;
-pub use interfaces::*;
-pub use service::DatabaseService;
 
 
 use anyhow::Result;

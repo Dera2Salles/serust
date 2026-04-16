@@ -1,17 +1,17 @@
 use crate::common::error::DomainError;
 use crate::common::permission::PermissionChecker;
-use crate::file::local_repository::FileRepository;
+use crate::file::interfaces::IFileRepository;
 use crate::share::service::ShareService;
 use crate::user::domain::User;
 use std::sync::Arc;
 
 pub struct StatUseCase {
-    file_repo: Arc<FileRepository>,
+    file_repo: Arc<dyn IFileRepository>,
     shares: Arc<ShareService>,
 }
 
 impl StatUseCase {
-    pub fn new(file_repo: Arc<FileRepository>, shares: Arc<ShareService>) -> Self {
+    pub fn new(file_repo: Arc<dyn IFileRepository>, shares: Arc<ShareService>) -> Self {
         Self { file_repo, shares }
     }
 

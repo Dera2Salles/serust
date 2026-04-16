@@ -1,15 +1,15 @@
 use crate::common::error::DomainError;
 use crate::common::permission::{Permission, PermissionChecker};
-use crate::file::local_repository::FileRepository;
+use crate::file::interfaces::IFileRepository;
 use crate::user::domain::User;
 use std::sync::Arc;
 
 pub struct RemoveDirUseCase {
-    file_repo: Arc<FileRepository>,
+    file_repo: Arc<dyn IFileRepository>,
 }
 
 impl RemoveDirUseCase {
-    pub fn new(file_repo: Arc<FileRepository>) -> Self {
+    pub fn new(file_repo: Arc<dyn IFileRepository>) -> Self {
         Self { file_repo }
     }
 

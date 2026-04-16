@@ -1,14 +1,14 @@
 use crate::common::permission::PermissionChecker;
-use crate::file::local_repository::FileRepository;
+use crate::file::interfaces::IFileRepository;
 use crate::user::domain::User;
 use std::sync::Arc;
 
 pub struct DirExistsUseCase {
-    file_repo: Arc<FileRepository>,
+    file_repo: Arc<dyn IFileRepository>,
 }
 
 impl DirExistsUseCase {
-    pub fn new(file_repo: Arc<FileRepository>) -> Self {
+    pub fn new(file_repo: Arc<dyn IFileRepository>) -> Self {
         Self { file_repo }
     }
 
@@ -25,8 +25,6 @@ impl DirExistsUseCase {
         }
 
         if resolved == "shared" || resolved.starts_with("shared/") {
-            // Check if it's a valid shared path
-            // (Simplified: just return false for now as shared exists check is complex)
             return false;
         }
 

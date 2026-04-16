@@ -1,15 +1,15 @@
 use crate::common::error::DomainError;
 use crate::common::permission::{Permission, PermissionChecker};
-use crate::file::local_repository::FileRepository;
+use crate::file::interfaces::IFileRepository;
 use crate::user::domain::User;
 use std::sync::Arc;
 
 pub struct RenameUseCase {
-    file_repo: Arc<FileRepository>,
+    file_repo: Arc<dyn IFileRepository>,
 }
 
 impl RenameUseCase {
-    pub fn new(file_repo: Arc<FileRepository>) -> Self {
+    pub fn new(file_repo: Arc<dyn IFileRepository>) -> Self {
         Self { file_repo }
     }
 
@@ -27,9 +27,8 @@ impl RenameUseCase {
             return Err(DomainError::UnsafePath);
         }
 
-        // Shared path handling (simplified for now)
         if old_resolved.starts_with("shared/") || new_resolved.starts_with("shared/") {
-            return Err(DomainError::PermissionDenied); // Complex renaming in shared folders not yet supported in this refactor
+            return Err(DomainError::PermissionDenied); 
         }
 
         if let Some(existing) = self.file_repo.get_metadata(&user.username, &old_resolved).await {

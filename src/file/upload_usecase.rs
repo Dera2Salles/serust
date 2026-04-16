@@ -4,7 +4,7 @@ use crate::database::domain::DbFileMetadata;
 use crate::database::file_usecases::CreateFileUseCase;
 use crate::database::user_usecases::FindUserUseCase;
 use crate::file::domain::FileMetadata;
-use crate::file::local_repository::FileRepository;
+use crate::file::interfaces::IFileRepository;
 use crate::share::service::ShareService;
 use crate::user::domain::User;
 use std::sync::Arc;
@@ -12,7 +12,7 @@ use std::sync::Arc;
 const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024;
 
 pub struct UploadUseCase {
-    file_repo: Arc<FileRepository>,
+    file_repo: Arc<dyn IFileRepository>,
     shares: Arc<ShareService>,
     create_db_file: Arc<CreateFileUseCase>,
     find_db_user: Arc<FindUserUseCase>,
@@ -20,7 +20,7 @@ pub struct UploadUseCase {
 
 impl UploadUseCase {
     pub fn new(
-        file_repo: Arc<FileRepository>,
+        file_repo: Arc<dyn IFileRepository>,
         shares: Arc<ShareService>,
         create_db_file: Arc<CreateFileUseCase>,
         find_db_user: Arc<FindUserUseCase>,

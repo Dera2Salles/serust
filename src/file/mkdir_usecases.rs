@@ -3,13 +3,13 @@ use crate::common::permission::{Permission, PermissionChecker};
 use crate::database::domain::DbFileMetadata;
 use crate::database::file_usecases::CreateFileUseCase;
 use crate::database::user_usecases::FindUserUseCase;
-use crate::file::local_repository::FileRepository;
+use crate::file::interfaces::IFileRepository;
 use crate::share::service::ShareService;
 use crate::user::domain::User;
 use std::sync::Arc;
 
 pub struct MkdirUseCase {
-    file_repo: Arc<FileRepository>,
+    file_repo: Arc<dyn IFileRepository>,
     shares: Arc<ShareService>,
     create_db_file: Arc<CreateFileUseCase>,
     find_db_user: Arc<FindUserUseCase>,
@@ -17,7 +17,7 @@ pub struct MkdirUseCase {
 
 impl MkdirUseCase {
     pub fn new(
-        file_repo: Arc<FileRepository>,
+        file_repo: Arc<dyn IFileRepository>,
         shares: Arc<ShareService>,
         create_db_file: Arc<CreateFileUseCase>,
         find_db_user: Arc<FindUserUseCase>,

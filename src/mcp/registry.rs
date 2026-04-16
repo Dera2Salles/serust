@@ -424,7 +424,6 @@ impl McpRegistry {
         };
 
         let user = Self::make_user(username);
-        // source_path and destination_path are absolute, so we can use "/" as cwd.
         match self.file_service.rename(&user, "/", source_path, destination_path).await {
             Ok(_) => McpToolResult::success(format!("Moved '{}' to '{}'.", source_path, destination_path)),
             Err(e) => McpToolResult::error(format!("Error: {}", e)),
