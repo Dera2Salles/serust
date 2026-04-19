@@ -65,4 +65,36 @@ impl IShareDatabaseRepository for ShareRepository {
         .await?;
         Ok(())
     }
+
+    async fn find_link_by_token(&self, token: &str) -> Result<Option<DbShareLink>> {
+        let row = sqlx::query(
+            "SELECT id, file_id, created_by, token, label, can_read, can_write, can_reshare, max_reads, expires_at, password_hash, is_active FROM share_links WHERE token = ? AND is_active = 1"
+        )
+        .bind(token)
+        .fetch_optional(&*self.db.pool)
+        .await?;
+
+        if let Some(r) = row {
+            use sqlx::Row;
+            let id_str: String = r.try_get("id")?;
+            let file_str: String = r.try_get("file_id")?;
+            let created_str: String = r.try_get("created_by")?;
+            Ok(Some(DbShareLink {
+                id: uuid::Uuid::parse_str(&id_str)?,
+                file_id: uuid::Uuid::parse_str(&file_str)?,
+                created_by: uuid::Uuid::parse_str(&created_str)?,
+                token: r.try_get("token")?,
+                label: r.try_get("label")?,
+                can_read: r.try_get("can_read")?,
+                can_write: r.try_get("can_write")?,
+                can_reshare: r.try_get("can_reshare")?,
+                max_reads: r.try_get("max_reads")?,
+                expires_at: r.try_get("expires_at")?,
+                password_hash: r.try_get("password_hash")?,
+                is_active: r.try_get("is_active")?,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
 }

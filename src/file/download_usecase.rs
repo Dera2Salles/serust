@@ -4,6 +4,8 @@ use crate::file::interfaces::IFileRepository;
 use crate::share::service::ShareService;
 use crate::user::domain::User;
 use std::sync::Arc;
+use flate2::read::GzDecoder;
+use std::io::Read;
 
 pub struct DownloadUseCase {
     file_repo: Arc<dyn IFileRepository>,
@@ -53,6 +55,20 @@ impl DownloadUseCase {
                 return Err(DomainError::PermissionDenied);
             }
             let data = self.file_repo.load(&owner, &inner).await?;
+            
+            // Transparent decompression
+            let data = if data.starts_with(&[0x1f, 0x8b]) {
+                let mut decoder = GzDecoder::new(&data[..]);
+                let mut decompressed = Vec::new();
+                if decoder.read_to_end(&mut decompressed).is_ok() {
+                    decompressed
+                } else {
+                    data
+                }
+            } else {
+                data
+            };
+
             self.shares
                 .consume_download(&user.username, &owner, &inner)
                 .await?;
@@ -70,6 +86,19 @@ impl DownloadUseCase {
         }
 
         let data = self.file_repo.load(&user.username, &resolved).await?;
+
+        // Transparent decompression
+        let data = if data.starts_with(&[0x1f, 0x8b]) {
+            let mut decoder = GzDecoder::new(&data[..]);
+            let mut decompressed = Vec::new();
+            if decoder.read_to_end(&mut decompressed).is_ok() {
+                decompressed
+            } else {
+                data
+            }
+        } else {
+            data
+        };
 
         let log_event =
             crate::log::domain::AccessLog::new_download_event(uuid::Uuid::new_v4(), None);

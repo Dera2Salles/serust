@@ -31,3 +31,31 @@ impl FindFileUseCase {
         self.repo.find_by_id(id).await
     }
 }
+
+pub struct UpdateFileUseCase {
+    repo: Arc<dyn IFileDatabaseRepository>,
+}
+
+impl UpdateFileUseCase {
+    pub fn new(repo: Arc<dyn IFileDatabaseRepository>) -> Self {
+        Self { repo }
+    }
+
+    pub async fn execute(&self, file: &DbFileMetadata) -> Result<()> {
+        self.repo.update(file).await
+    }
+}
+
+pub struct FindFileByPathUseCase {
+    repo: Arc<dyn IFileDatabaseRepository>,
+}
+
+impl FindFileByPathUseCase {
+    pub fn new(repo: Arc<dyn IFileDatabaseRepository>) -> Self {
+        Self { repo }
+    }
+
+    pub async fn execute(&self, path: &str) -> Result<Option<DbFileMetadata>> {
+        self.repo.find_by_storage_path(path).await
+    }
+}

@@ -80,7 +80,7 @@ impl FileService {
         user: &User,
         cwd: &str,
         target: &str,
-    ) -> Result<Option<(u64, bool)>, DomainError> {
+    ) -> Result<Option<(u64, bool, Option<String>)>, DomainError> {
         self.stat.execute(user, cwd, target).await
     }
 

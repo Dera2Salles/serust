@@ -10,7 +10,7 @@ mod share;
 mod user;
 
 use framework::metrics::Metrics;
-use mcp::{registry::McpRegistry, server::run_mcp_server};
+use mcp::{registry::McpRegistry, server::{run_mcp_server, McpServerState}};
 use std::sync::Arc;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
@@ -27,12 +27,18 @@ async fn main() -> anyhow::Result<()> {
     let auth_service = services.auth_service;
     let share_service = services.share_service;
     let file_service = services.file_service;
+    let db = services.db;
 
     let _metrics = Metrics::new();
 
     let mcp_registry = Arc::new(McpRegistry::new(Arc::clone(&file_service)));
+    let mcp_state = Arc::new(McpServerState {
+        registry: Arc::clone(&mcp_registry),
+        file_service: Arc::clone(&file_service),
+        db: db.clone(),
+    });
     tokio::spawn(async move {
-        if let Err(e) = run_mcp_server(mcp_registry, "0.0.0.0:8081").await {
+        if let Err(e) = run_mcp_server(mcp_state, "0.0.0.0:8081").await {
             tracing::error!("MCP server error: {}", e);
         }
     });
@@ -67,3 +73,4 @@ async fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
+

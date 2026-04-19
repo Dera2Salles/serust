@@ -23,6 +23,16 @@ CREATE TABLE IF NOT EXISTS files (
     FOREIGN KEY(owner_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS file_versions (
+    id TEXT PRIMARY KEY,
+    file_id TEXT NOT NULL,
+    storage_path TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    checksum TEXT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(file_id) REFERENCES files(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS share_links (
     id TEXT PRIMARY KEY, 
     file_id TEXT NOT NULL,

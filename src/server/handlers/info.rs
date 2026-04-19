@@ -56,10 +56,56 @@ impl Handler for FeatHandler {
         ctx.write_line("211-Features:");
         ctx.write_line(" PASV");
         ctx.write_line(" SIZE");
+        ctx.write_line(" HASH");
         ctx.write_line(" MLST");
         ctx.write_line(" SHARE");
         ctx.write_line(" UTF8");
         ctx.write_line("211 End");
+        Ok(())
+    }
+}
+
+pub struct HashHandler {
+    files: Arc<FileService>,
+}
+impl HashHandler {
+    pub fn new(files: Arc<FileService>) -> Self {
+        Self { files }
+    }
+}
+
+#[async_trait]
+impl Handler for HashHandler {
+    fn command(&self) -> &'static str {
+        "HASH"
+    }
+    async fn handle(
+        &self,
+        ctx: &mut Context,
+        args: &[&str],
+        _: &mut BufReader<tokio::net::tcp::ReadHalf<'_>>,
+        _: &mut tokio::net::tcp::WriteHalf<'_>,
+    ) -> HandlerResult {
+        if args.is_empty() {
+            ctx.error(501, "Syntax error in parameters or arguments.");
+            return Ok(());
+        }
+
+        let target = args[0];
+        let user = make_user(ctx);
+        let cwd = ctx.cwd.clone();
+
+        match self.files.stat(&user, &cwd, target).await {
+            Ok(Some((_, is_dir, checksum_opt))) if !is_dir => {
+                if let Some(checksum) = checksum_opt {
+                     ctx.write_line(&format!("213 {}", checksum));
+                } else {
+                     ctx.error(550, "Hash not available.");
+                }
+            }
+            _ => ctx.error(550, "File unavailable or is a directory."),
+        }
+
         Ok(())
     }
 }
@@ -155,7 +201,7 @@ impl Handler for MlstHandler {
         let cwd = ctx.cwd.clone();
 
         match self.files.stat(&user, &cwd, target).await {
-            Ok(Some((size, is_dir))) => {
+            Ok(Some((size, is_dir, _))) => {
                 let kind = if is_dir { "dir" } else { "file" };
                 ctx.write_line(&format!("250-{};type={};size={}", target, kind, size));
                 ctx.write_line("250 End");

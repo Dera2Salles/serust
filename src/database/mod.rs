@@ -1,6 +1,7 @@
 pub mod domain;
 pub mod interfaces;
 pub mod access_log_repository;
+pub mod analytics_repository;
 pub mod file_repository;
 pub mod share_repository;
 pub mod user_repository;

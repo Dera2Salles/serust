@@ -3,7 +3,6 @@ use crate::database::interfaces::IFileDatabaseRepository;
 use crate::database::Database;
 use anyhow::Result;
 use async_trait::async_trait;
-use sqlx::Row;
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -50,6 +49,58 @@ impl IFileDatabaseRepository for FileRepository {
         .fetch_optional(&*self.db.pool)
         .await?;
 
+        Self::row_to_metadata(row)
+    }
+
+    async fn find_by_storage_path(&self, path: &str) -> Result<Option<DbFileMetadata>> {
+        let row = sqlx::query(
+            "SELECT id, owner_id, filename, storage_path, size_bytes, mime_type, checksum, created_at, updated_at, is_deleted FROM files WHERE storage_path = ? AND is_deleted = 0"
+        )
+        .bind(path)
+        .fetch_optional(&*self.db.pool)
+        .await?;
+
+        Self::row_to_metadata(row)
+    }
+
+    async fn update(&self, file: &DbFileMetadata) -> Result<()> {
+        let id_str = file.id.to_string();
+
+        // 1. Save current state to file_versions
+        let current = self.find_by_id(file.id).await?;
+        if let Some(old) = current {
+            let version_id = Uuid::new_v4().to_string();
+            sqlx::query(
+                "INSERT INTO file_versions (id, file_id, storage_path, size_bytes, checksum, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+            )
+            .bind(&version_id)
+            .bind(&id_str)
+            .bind(&old.storage_path)
+            .bind(old.size_bytes)
+            .bind(&old.checksum)
+            .bind(old.updated_at)
+            .execute(&*self.db.pool)
+            .await?;
+        }
+
+        // 2. Update files table
+        sqlx::query(
+            "UPDATE files SET size_bytes = ?, checksum = ?, updated_at = ? WHERE id = ?"
+        )
+        .bind(file.size_bytes)
+        .bind(&file.checksum)
+        .bind(file.updated_at)
+        .bind(&id_str)
+        .execute(&*self.db.pool)
+        .await?;
+
+        Ok(())
+    }
+}
+
+impl FileRepository {
+    fn row_to_metadata(row: Option<sqlx::sqlite::SqliteRow>) -> Result<Option<DbFileMetadata>> {
+        use sqlx::Row;
         if let Some(r) = row {
             let id_str: String = r.try_get("id")?;
             let owner_str: String = r.try_get("owner_id")?;

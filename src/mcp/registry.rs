@@ -122,6 +122,19 @@ impl McpRegistry {
                     "required": ["username", "source_path", "destination_path"]
                 }),
             },
+            McpTool {
+                name: "read_file".into(),
+                description: "Read the text content of a file on the FTP server. Use this to answer questions about file contents, summarize documents, or analyze code.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "username": { "type": "string", "description": "Authenticated username" },
+                        "path":     { "type": "string", "description": "Directory containing the file" },
+                        "filename": { "type": "string", "description": "Name of the file to read" }
+                    },
+                    "required": ["username", "path", "filename"]
+                }),
+            },
         ]
     }
 
@@ -136,6 +149,7 @@ impl McpRegistry {
             "search_files" => self.tool_search_files(args).await,
             "rename_file" => self.tool_rename_file(args).await,
             "move_file" => self.tool_move_file(args).await,
+            "read_file" => self.tool_read_file(args).await,
             _ => McpToolResult::error(format!("Unknown tool: {}", name)),
         }
     }
@@ -143,21 +157,72 @@ impl McpRegistry {
     pub async fn list_resources(&self, username: &str) -> Vec<McpResource> {
         let user = Self::make_user(username);
         let mut resources = Vec::new();
+        Box::pin(self.collect_resources(username, &user, "/", 0, &mut resources)).await;
+        resources
+    }
 
-        if let Ok(entries) = self.file_service.list(&user, "/").await {
-            for (name, is_dir) in entries {
-                if !is_dir {
-                    resources.push(McpResource {
-                        uri: format!("ftp://{}/{}", username, name),
+    async fn collect_resources(
+        &self,
+        username: &str,
+        user: &User,
+        path: &str,
+        depth: usize,
+        out: &mut Vec<McpResource>,
+    ) {
+        const MAX_DEPTH: usize = 4;
+        if depth > MAX_DEPTH {
+            return;
+        }
+        let entries = match self.file_service.list(user, path).await {
+            Ok(e) => e,
+            Err(_) => return,
+        };
+        for (name, is_dir) in entries {
+            let full_path = if path == "/" {
+                format!("/{}", name)
+            } else {
+                format!("{}/{}", path, name)
+            };
+            if is_dir {
+                Box::pin(self.collect_resources(username, user, &full_path, depth + 1, out)).await;
+            } else {
+                // Only expose text-readable files to the AI
+                if Self::is_text_readable(&name) {
+                    let uri = format!("ftp://{}{}", username, full_path);
+                    out.push(McpResource {
+                        uri: uri.clone(),
                         name: name.clone(),
-                        description: Some(format!("File '{}' in root directory", name)),
-                        mime_type: Some("text/plain".into()),
+                        description: Some(format!("File at '{}'", full_path)),
+                        mime_type: Some(Self::guess_mime(&name).into()),
                     });
                 }
             }
         }
+    }
 
-        resources
+    fn is_text_readable(name: &str) -> bool {
+        let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
+        matches!(
+            ext.as_str(),
+            "txt" | "md" | "json" | "yaml" | "yml" | "toml" | "xml" | "html" | "htm"
+                | "css" | "js" | "ts" | "rs" | "dart" | "py" | "go" | "java" | "kt"
+                | "swift" | "c" | "cpp" | "h" | "sh" | "bash" | "env" | "csv"
+                | "log" | "conf" | "ini" | "sql" | "graphql" | "proto"
+        )
+    }
+
+    fn guess_mime(name: &str) -> &'static str {
+        let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
+        match ext.as_str() {
+            "json" => "application/json",
+            "xml" => "application/xml",
+            "html" | "htm" => "text/html",
+            "css" => "text/css",
+            "js" | "ts" => "text/javascript",
+            "csv" => "text/csv",
+            "sql" => "application/sql",
+            _ => "text/plain",
+        }
     }
 
     pub async fn read_resource(&self, uri: &str) -> Result<McpResourceContent, String> {
@@ -266,7 +331,14 @@ impl McpRegistry {
                 let mut lines = vec![format!("Contents of '{}':", path)];
                 for (name, is_dir) in &entries {
                     let icon = if *is_dir { "📁" } else { "📄" };
-                    lines.push(format!("  {} {}", icon, name));
+                    let mut line = format!("  {} {}", icon, name);
+                    
+                    if !is_dir {
+                        if let Ok(Some((size, _, Some(checksum)))) = self.file_service.stat(&user, path, name).await {
+                            line.push_str(&format!(" (size: {}, checksum: {})", size, checksum));
+                        }
+                    }
+                    lines.push(line);
                 }
                 McpToolResult::success(lines.join("\n"))
             }
@@ -409,6 +481,38 @@ impl McpRegistry {
         }
     }
 
+    async fn tool_read_file(&self, args: &Value) -> McpToolResult {
+        let username = match Self::get_str(args, "username") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let path = match Self::get_str(args, "path") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let filename = match Self::get_str(args, "filename") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+
+        let user = Self::make_user(username);
+        const MAX_PREVIEW_BYTES: usize = 128 * 1024; // 128 KB cap for AI context
+        match self.file_service.download(&user, path, filename).await {
+            Ok(data) => {
+                let truncated = data.len() > MAX_PREVIEW_BYTES;
+                let slice = &data[..data.len().min(MAX_PREVIEW_BYTES)];
+                let text = String::from_utf8_lossy(slice).to_string();
+                let content = if truncated {
+                    format!("{}\n\n[... file truncated at 128 KB ...]", text)
+                } else {
+                    text
+                };
+                McpToolResult::success(content)
+            }
+            Err(e) => McpToolResult::error(format!("Cannot read '{}': {}", filename, e)),
+        }
+    }
+
     async fn tool_move_file(&self, args: &Value) -> McpToolResult {
         let username = match Self::get_str(args, "username") {
             Ok(v) => v,
@@ -430,7 +534,7 @@ impl McpRegistry {
         }
     }
 
-    async fn recursive_stats(&self, user: &User, path: &str) -> (u64, u64, u64) {
+    pub async fn recursive_stats(&self, user: &User, path: &str) -> (u64, u64, u64) {
         let entries = match self.file_service.list(user, path).await {
             Ok(e) => e,
             Err(_) => return (0, 0, 0),
@@ -452,7 +556,7 @@ impl McpRegistry {
                 dc += d;
             } else {
                 fc += 1;
-                if let Ok(Some((s, _))) = self.file_service.stat(user, path, name).await {
+                if let Ok(Some((s, _, _))) = self.file_service.stat(user, path, name).await {
                     tb += s;
                 }
             }
