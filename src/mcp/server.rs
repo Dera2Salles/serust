@@ -1,5 +1,5 @@
 use crate::database::analytics_repository::AnalyticsRepository;
-use crate::database::interfaces::{IFileDatabaseRepository, IShareDatabaseRepository};
+use crate::database::interfaces::{IFileDatabaseRepository, IShareDatabaseRepository, IUserRepository};
 use crate::database::{
     file_repository::FileRepository as DbFileRepository,
     share_repository::ShareRepository as DbShareRepository, Database,
@@ -213,6 +213,7 @@ async fn handle_public_download(
     use hyper::StatusCode;
 
     let share_repo = DbShareRepository::new(state.db.clone());
+    let user_repo = crate::database::user_repository::UserRepository::new(state.db.clone());
     let file_repo = DbFileRepository::new(state.db.clone());
 
     // 1. Resolve token
@@ -273,20 +274,35 @@ async fn handle_public_download(
         }
     };
 
-    // 5. Read file from disk (storage_path = "/<username>/filename" → "storage/<username>/filename")
-    let disk_path = format!("storage{}", file_meta.storage_path);
-    let data = match tokio::fs::read(&disk_path).await {
-        Ok(d) => d,
-        Err(e) => {
-            return json_response(
+    // 5. Resolve the owner to get password_hash for decryption
+    let owner = match user_repo.find_by_id(file_meta.owner_id).await {
+        Ok(Some(u)) => u,
+        _ => {
+             return json_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                json!({"error": format!("Cannot read file: {}", e)}),
+                json!({"error": "Owner not found"}),
                 cors_headers,
             )
         }
     };
 
-    // 6. Serve file with content-type and content-disposition
+    // 6. Use DownloadUseCase to get data (includes transparent decryption/decompression)
+    // We mock a User object with the owner's credentials to satisfy the UseCase
+    let user_domain = crate::user::domain::User {
+        username: owner.username.clone(),
+        password_hash: owner.password_hash.clone(),
+    };
+    
+    // We need DownloadUseCase. In McpServerState we have file_service.
+    // DownloadUseCase is internal to FileService but we can use file_service.download()
+    let data = match state.file_service.download(&user_domain, "/", &file_meta.filename).await {
+        Ok(d) => d,
+        Err(e) => {
+            return json_response(StatusCode::INTERNAL_SERVER_ERROR, json!({"error": e.to_string()}), cors_headers);
+        }
+    };
+
+    // 7. Serve file with content-type and content-disposition
     let mime = file_meta
         .mime_type
         .unwrap_or_else(|| "application/octet-stream".into());

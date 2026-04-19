@@ -59,4 +59,29 @@ impl IUserRepository for UserRepository {
             Ok(None)
         }
     }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<DbUser>> {
+        let id_str = id.to_string();
+        let row = sqlx::query(
+            "SELECT id, username, password_hash, email, created_at, storage_quota_bytes, is_active FROM users WHERE id = ?"
+        )
+        .bind(id_str)
+        .fetch_optional(&*self.db.pool)
+        .await?;
+
+        if let Some(r) = row {
+            let id_str: String = r.try_get("id")?;
+            Ok(Some(DbUser {
+                id: Uuid::parse_str(&id_str)?,
+                username: r.try_get("username")?,
+                password_hash: r.try_get("password_hash")?,
+                email: r.try_get("email")?,
+                created_at: r.try_get("created_at")?,
+                storage_quota_bytes: r.try_get("storage_quota_bytes")?,
+                is_active: r.try_get("is_active")?,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
 }
