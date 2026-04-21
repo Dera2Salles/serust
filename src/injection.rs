@@ -7,7 +7,7 @@ use crate::database::{
     Database,
     interfaces::{IAccessLogRepository, IFileDatabaseRepository, IShareDatabaseRepository, IUserRepository},
     user_usecases::{CreateUserUseCase, FindUserUseCase},
-    file_usecases::{CreateFileUseCase, FindFileUseCase, UpdateFileUseCase, FindFileByPathUseCase},
+    file_usecases::{CreateFileUseCase, FindFileUseCase, UpdateFileUseCase, FindFileByPathUseCase, RenameFileDbUseCase, SoftDeleteFileDbUseCase, RestoreFileDbUseCase, FindDeletedFilesDbUseCase, PermanentDeleteFileDbUseCase},
     share_usecases::{CreateLinkUseCase, CreateGrantUseCase},
     log_usecases::LogAccessUseCase,
 };
@@ -46,6 +46,11 @@ pub async fn setup_injection() -> Result<Services> {
     let find_file_usecase = Arc::new(FindFileUseCase::new(Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>));
     let update_file_usecase = Arc::new(UpdateFileUseCase::new(Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>));
     let find_file_by_path_usecase = Arc::new(FindFileByPathUseCase::new(Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>));
+    let rename_db_file_usecase = Arc::new(RenameFileDbUseCase::new(Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>));
+    let soft_delete_db_file_usecase = Arc::new(SoftDeleteFileDbUseCase::new(Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>));
+    let restore_db_file_usecase = Arc::new(RestoreFileDbUseCase::new(Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>));
+    let find_deleted_files_db_usecase = Arc::new(FindDeletedFilesDbUseCase::new(Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>));
+    let permanent_delete_db_file_usecase = Arc::new(PermanentDeleteFileDbUseCase::new(Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>));
     let create_link_usecase = Arc::new(CreateLinkUseCase::new(Arc::new(db_share_repo.clone()) as Arc<dyn IShareDatabaseRepository>));
     let create_grant_usecase = Arc::new(CreateGrantUseCase::new(Arc::new(db_share_repo.clone()) as Arc<dyn IShareDatabaseRepository>));
     let log_access_usecase = Arc::new(LogAccessUseCase::new(Arc::new(db_log_repo.clone()) as Arc<dyn IAccessLogRepository>));
@@ -68,6 +73,7 @@ pub async fn setup_injection() -> Result<Services> {
     let list_usecase = Arc::new(crate::file::ListUseCase::new(
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
         Arc::clone(&share_service),
+        Arc::clone(&find_file_by_path_usecase),
     ));
     let mkdir_usecase = Arc::new(crate::file::MkdirUseCase::new(
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
@@ -78,6 +84,8 @@ pub async fn setup_injection() -> Result<Services> {
     let delete_usecase = Arc::new(crate::file::DeleteUseCase::new(
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
         Arc::clone(&share_service),
+        Arc::clone(&find_file_by_path_usecase),
+        Arc::clone(&soft_delete_db_file_usecase),
     ));
     let stat_usecase = Arc::new(crate::file::StatUseCase::new(
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
@@ -86,12 +94,24 @@ pub async fn setup_injection() -> Result<Services> {
     ));
     let rename_usecase = Arc::new(crate::file::RenameUseCase::new(
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
+        Arc::clone(&find_file_by_path_usecase),
+        Arc::clone(&rename_db_file_usecase),
     ));
     let rmdir_usecase = Arc::new(crate::file::RemoveDirUseCase::new(
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
     ));
     let dir_exists_usecase = Arc::new(crate::file::DirExistsUseCase::new(
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
+    ));
+    let restore_usecase = Arc::new(crate::file::RestoreUseCase::new(
+        Arc::clone(&find_file_by_path_usecase),
+        Arc::clone(&restore_db_file_usecase),
+    ));
+    let purge_usecase = Arc::new(crate::file::PurgeUseCase::new(
+        Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
+        Arc::clone(&find_user_usecase),
+        Arc::clone(&find_deleted_files_db_usecase),
+        Arc::clone(&permanent_delete_db_file_usecase),
     ));
 
     let file_service = Arc::new(FileService::new(
@@ -104,6 +124,8 @@ pub async fn setup_injection() -> Result<Services> {
         rename_usecase,
         rmdir_usecase,
         dir_exists_usecase,
+        restore_usecase,
+        purge_usecase,
     ));
 
     for (name, pass) in [

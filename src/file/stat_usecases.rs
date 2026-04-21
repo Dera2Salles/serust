@@ -58,6 +58,14 @@ impl StatUseCase {
                 None => return Ok(None),
             }
         } else {
+            // Check if deleted in DB
+            let storage_path = format!("/{}", resolved);
+            if let Ok(Some(db_meta)) = self.find_db_file.execute(&storage_path).await {
+                if db_meta.is_deleted {
+                    return Ok(None);
+                }
+            }
+
             match self.file_repo.stat(&user.username, &resolved).await? {
                 Some(s) => s,
                 None => return Ok(None),

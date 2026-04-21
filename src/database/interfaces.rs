@@ -16,6 +16,11 @@ pub trait IFileDatabaseRepository: Send + Sync {
     async fn find_by_id(&self, id: Uuid) -> Result<Option<DbFileMetadata>>;
     async fn find_by_storage_path(&self, path: &str) -> Result<Option<DbFileMetadata>>;
     async fn update(&self, file: &DbFileMetadata) -> Result<()>;
+    async fn rename(&self, id: Uuid, new_storage_path: &str, new_filename: &str) -> Result<()>;
+    async fn soft_delete(&self, id: Uuid) -> Result<()>;
+    async fn restore(&self, id: Uuid) -> Result<()>;
+    async fn find_deleted_by_owner(&self, owner_id: Uuid) -> Result<Vec<DbFileMetadata>>;
+    async fn delete_permanently(&self, id: Uuid) -> Result<()>;
 }
 
 #[async_trait]

@@ -54,7 +54,7 @@ impl IFileDatabaseRepository for FileRepository {
 
     async fn find_by_storage_path(&self, path: &str) -> Result<Option<DbFileMetadata>> {
         let row = sqlx::query(
-            "SELECT id, owner_id, filename, storage_path, size_bytes, mime_type, checksum, created_at, updated_at, is_deleted FROM files WHERE storage_path = ? AND is_deleted = 0"
+            "SELECT id, owner_id, filename, storage_path, size_bytes, mime_type, checksum, created_at, updated_at, is_deleted FROM files WHERE storage_path = ?"
         )
         .bind(path)
         .fetch_optional(&*self.db.pool)
@@ -94,6 +94,70 @@ impl IFileDatabaseRepository for FileRepository {
         .execute(&*self.db.pool)
         .await?;
 
+        Ok(())
+    }
+
+    async fn rename(&self, id: Uuid, new_storage_path: &str, new_filename: &str) -> Result<()> {
+        let id_str = id.to_string();
+        let now = chrono::Utc::now();
+
+        sqlx::query(
+            "UPDATE files SET storage_path = ?, filename = ?, updated_at = ? WHERE id = ?"
+        )
+        .bind(new_storage_path)
+        .bind(new_filename)
+        .bind(now)
+        .bind(&id_str)
+        .execute(&*self.db.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn soft_delete(&self, id: Uuid) -> Result<()> {
+        let id_str = id.to_string();
+        sqlx::query("UPDATE files SET is_deleted = 1, updated_at = ? WHERE id = ?")
+            .bind(chrono::Utc::now())
+            .bind(&id_str)
+            .execute(&*self.db.pool)
+            .await?;
+        Ok(())
+    }
+
+    async fn restore(&self, id: Uuid) -> Result<()> {
+        let id_str = id.to_string();
+        sqlx::query("UPDATE files SET is_deleted = 0, updated_at = ? WHERE id = ?")
+            .bind(chrono::Utc::now())
+            .bind(&id_str)
+            .execute(&*self.db.pool)
+            .await?;
+        Ok(())
+    }
+
+    async fn find_deleted_by_owner(&self, owner_id: Uuid) -> Result<Vec<DbFileMetadata>> {
+        let owner_str = owner_id.to_string();
+        let rows = sqlx::query(
+            "SELECT id, owner_id, filename, storage_path, size_bytes, mime_type, checksum, created_at, updated_at, is_deleted FROM files WHERE owner_id = ? AND is_deleted = 1"
+        )
+        .bind(&owner_str)
+        .fetch_all(&*self.db.pool)
+        .await?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            if let Some(meta) = Self::row_to_metadata(Some(row))? {
+                results.push(meta);
+            }
+        }
+        Ok(results)
+    }
+
+    async fn delete_permanently(&self, id: Uuid) -> Result<()> {
+        let id_str = id.to_string();
+        sqlx::query("DELETE FROM files WHERE id = ?")
+            .bind(&id_str)
+            .execute(&*self.db.pool)
+            .await?;
         Ok(())
     }
 }

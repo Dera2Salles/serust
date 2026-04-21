@@ -503,6 +503,79 @@ impl Handler for RntoHandler {
     }
 }
 
+pub struct UndeHandler {
+    files: Arc<FileService>,
+}
+impl UndeHandler {
+    pub fn new(files: Arc<FileService>) -> Self {
+        Self { files }
+    }
+}
+
+#[async_trait]
+impl Handler for UndeHandler {
+    fn command(&self) -> &'static str {
+        "UNDE"
+    }
+    async fn handle(
+        &self,
+        ctx: &mut Context,
+        args: &[&str],
+        _: &mut BufReader<tokio::net::tcp::ReadHalf<'_>>,
+        _: &mut tokio::net::tcp::WriteHalf<'_>,
+    ) -> HandlerResult {
+        if args.is_empty() {
+            ctx.error(501, "Syntax error in parameters or arguments.");
+            return Ok(());
+        }
+        let filename = args[0];
+        let user = make_user(ctx);
+        let cwd = ctx.cwd.clone();
+
+        match self.files.restore(&user, &cwd, filename).await {
+            Ok(_) => ctx.write_line("250 File restored."),
+            Err(e) => {
+                error!("UNDE: {}", e);
+                ctx.error(550, "Failed to restore file.");
+            }
+        }
+        Ok(())
+    }
+}
+
+pub struct PurgHandler {
+    files: Arc<FileService>,
+}
+impl PurgHandler {
+    pub fn new(files: Arc<FileService>) -> Self {
+        Self { files }
+    }
+}
+
+#[async_trait]
+impl Handler for PurgHandler {
+    fn command(&self) -> &'static str {
+        "PURG"
+    }
+    async fn handle(
+        &self,
+        ctx: &mut Context,
+        _: &[&str],
+        _: &mut BufReader<tokio::net::tcp::ReadHalf<'_>>,
+        _: &mut tokio::net::tcp::WriteHalf<'_>,
+    ) -> HandlerResult {
+        let user = make_user(ctx);
+        match self.files.purge(&user).await {
+            Ok(_) => ctx.write_line("250 Recycle bin purged."),
+            Err(e) => {
+                error!("PURG: {}", e);
+                ctx.error(550, "Failed to purge recycle bin.");
+            }
+        }
+        Ok(())
+    }
+}
+
 pub struct SizeHandler {
     files: Arc<FileService>,
 }

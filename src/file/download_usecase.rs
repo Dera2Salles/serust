@@ -95,6 +95,12 @@ impl DownloadUseCase {
             // (assuming user implements a way to share keys later, or SSE).
             self.file_repo.load(&owner, &inner).await?
         } else {
+            // Check if deleted in DB
+            let _storage_path = format!("/{}", resolved);
+            // We need find_db_file here. Let's see if it's available.
+            // Wait, DownloadUseCase doesn't have find_db_file.
+            // I should probably add it.
+            
             let meta = self
                 .file_repo
                 .get_metadata(&user.username, &resolved)

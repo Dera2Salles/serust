@@ -1,7 +1,7 @@
 use crate::common::error::DomainError;
 use crate::file::{
-    DeleteUseCase, DirExistsUseCase, DownloadUseCase, ListUseCase, MkdirUseCase, RemoveDirUseCase,
-    RenameUseCase, StatUseCase, UploadUseCase,
+    DeleteUseCase, DirExistsUseCase, DownloadUseCase, ListUseCase, MkdirUseCase, PurgeUseCase,
+    RemoveDirUseCase, RenameUseCase, RestoreUseCase, StatUseCase, UploadUseCase,
 };
 use crate::user::domain::User;
 use std::sync::Arc;
@@ -16,6 +16,8 @@ pub struct FileService {
     rename: Arc<RenameUseCase>,
     rmdir: Arc<RemoveDirUseCase>,
     dir_exists: Arc<DirExistsUseCase>,
+    restore: Arc<RestoreUseCase>,
+    purge: Arc<PurgeUseCase>,
 }
 
 impl FileService {
@@ -29,6 +31,8 @@ impl FileService {
         rename: Arc<RenameUseCase>,
         rmdir: Arc<RemoveDirUseCase>,
         dir_exists: Arc<DirExistsUseCase>,
+        restore: Arc<RestoreUseCase>,
+        purge: Arc<PurgeUseCase>,
     ) -> Self {
         Self {
             download,
@@ -40,6 +44,8 @@ impl FileService {
             rename,
             rmdir,
             dir_exists,
+            restore,
+            purge,
         }
     }
 
@@ -101,5 +107,17 @@ impl FileService {
     pub async fn dir_exists(&self, user: &User, cwd: &str, dirname: &str) -> bool {
         self.dir_exists.execute(user, cwd, dirname).await
     }
-}
 
+    pub async fn restore(
+        &self,
+        user: &User,
+        cwd: &str,
+        filename: &str,
+    ) -> Result<(), DomainError> {
+        self.restore.execute(user, cwd, filename).await
+    }
+
+    pub async fn purge(&self, user: &User) -> Result<(), DomainError> {
+        self.purge.execute(user).await
+    }
+}

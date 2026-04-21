@@ -65,9 +65,11 @@ impl Handler for FeatHandler {
     }
 }
 
+#[allow(dead_code)]
 pub struct HashHandler {
     files: Arc<FileService>,
 }
+#[allow(dead_code)]
 impl HashHandler {
     pub fn new(files: Arc<FileService>) -> Self {
         Self { files }

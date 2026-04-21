@@ -8,8 +8,8 @@ use crate::server::handlers::info::{
 use crate::server::handlers::network::{PasvHandler, PortHandler};
 use crate::server::handlers::share::{ShareHandler, SharesHandler, UnshareHandler};
 use crate::server::handlers::transfer::{
-    DeleHandler, ListDirHandler, MkdHandler, NlstHandler, RetrHandler, RmdHandler, RnfrHandler,
-    RntoHandler, SizeHandler, StorHandler,
+    DeleHandler, ListDirHandler, MkdHandler, NlstHandler, PurgHandler, RetrHandler, RmdHandler,
+    RnfrHandler, RntoHandler, SizeHandler, StorHandler, UndeHandler,
 };
 use crate::server::middlewares::{
     auth_middleware::AuthMiddleware, logging_middleware::LoggingMiddleware,
@@ -59,6 +59,8 @@ impl TcpServer {
             .route(DeleHandler::new(Arc::clone(&file_service)))
             .route(RnfrHandler)
             .route(RntoHandler::new(Arc::clone(&file_service)))
+            .route(UndeHandler::new(Arc::clone(&file_service)))
+            .route(PurgHandler::new(Arc::clone(&file_service)))
             .route(SizeHandler::new(Arc::clone(&file_service)))
             .route(ShareHandler::new(Arc::clone(&share_service)))
             .route(UnshareHandler::new(Arc::clone(&share_service)))

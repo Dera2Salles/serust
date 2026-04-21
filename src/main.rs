@@ -74,3 +74,54 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::user::domain::User;
+    
+    #[tokio::test]
+    async fn test_recycle_bin() -> anyhow::Result<()> {
+        let _ = std::fs::remove_file("test_rb.db");
+        let services = injection::setup_injection().await?;
+        let file_service = services.file_service;
+        
+        let user = User {
+            username: "alice".to_string(),
+            password_hash: "4e40e8ffe0ee32fa53e139147ed559229a5930f89c2204706fc174beb36210b3".to_string(),
+        };
+
+        // 1. Upload
+        let filename = "trash.txt";
+        let content = b"goodbye world".to_vec();
+        file_service.upload(&user, "/", filename, content.len() as u64, content).await?;
+
+        // 2. Soft Delete
+        file_service.delete(&user, "/", filename).await?;
+
+        // 3. Verify hidden from LIST
+        let entries = file_service.list(&user, "/").await?;
+        assert!(!entries.iter().any(|(n, _)| n == filename), "File should be hidden from LIST after soft delete");
+
+        // 4. Verify still on disk
+        let storage_root = std::path::PathBuf::from("storage");
+        let physical_path = storage_root.join(&user.username).join(filename);
+        assert!(physical_path.exists(), "File should still exist on disk after soft delete");
+
+        // 5. Undelete
+        file_service.restore(&user, "/", filename).await?;
+
+        // 6. Verify visible in LIST
+        let entries = file_service.list(&user, "/").await?;
+        assert!(entries.iter().any(|(n, _)| n == filename), "File should be visible in LIST after restore");
+
+        // 7. Purge
+        file_service.delete(&user, "/", filename).await?;
+        file_service.purge(&user).await?;
+
+        // 8. Verify gone from disk
+        assert!(!physical_path.exists(), "File should be gone from disk after PURGE");
+
+        Ok(())
+    }
+}
+
