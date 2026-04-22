@@ -69,7 +69,12 @@ impl RenameFileDbUseCase {
         Self { repo }
     }
 
-    pub async fn execute(&self, id: Uuid, new_storage_path: &str, new_filename: &str) -> Result<()> {
+    pub async fn execute(
+        &self,
+        id: Uuid,
+        new_storage_path: &str,
+        new_filename: &str,
+    ) -> Result<()> {
         self.repo.rename(id, new_storage_path, new_filename).await
     }
 }

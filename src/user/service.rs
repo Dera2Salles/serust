@@ -14,7 +14,10 @@ pub struct AuthService {
 
 impl AuthService {
     pub fn new(find_user: Arc<FindUserUseCase>, create_user: Arc<CreateUserUseCase>) -> Self {
-        Self { find_user, create_user }
+        Self {
+            find_user,
+            create_user,
+        }
     }
 
     pub fn hash_password(password: &str) -> String {

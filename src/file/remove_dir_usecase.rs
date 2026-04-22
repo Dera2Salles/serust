@@ -13,12 +13,7 @@ impl RemoveDirUseCase {
         Self { file_repo }
     }
 
-    pub async fn execute(
-        &self,
-        user: &User,
-        cwd: &str,
-        dirname: &str,
-    ) -> Result<(), DomainError> {
+    pub async fn execute(&self, user: &User, cwd: &str, dirname: &str) -> Result<(), DomainError> {
         let resolved = PermissionChecker::resolve_path(cwd, dirname);
 
         if !PermissionChecker::is_safe_path(&resolved) {

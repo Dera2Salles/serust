@@ -20,7 +20,12 @@ impl RestoreUseCase {
         }
     }
 
-    pub async fn execute(&self, _user: &User, cwd: &str, filename: &str) -> Result<(), DomainError> {
+    pub async fn execute(
+        &self,
+        _user: &User,
+        cwd: &str,
+        filename: &str,
+    ) -> Result<(), DomainError> {
         let resolved = PermissionChecker::resolve_path(cwd, filename);
         if !PermissionChecker::is_safe_path(&resolved) {
             return Err(DomainError::UnsafePath);
@@ -28,10 +33,6 @@ impl RestoreUseCase {
 
         let storage_path = format!("/{}", resolved);
         if let Ok(Some(db_meta)) = self.find_db_file.execute(&storage_path).await {
-            // Check ownership? Yes, usually only owner can restore.
-            // Since db_meta contains owner_id, we'd need to resolve user.username to ID.
-            // For now we assume if they can see/path it they can restore if it's theirs.
-            // But we should really check ownership.
             self.restore_db_file
                 .execute(db_meta.id)
                 .await

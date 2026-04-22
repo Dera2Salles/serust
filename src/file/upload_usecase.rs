@@ -1,17 +1,17 @@
 use crate::common::error::DomainError;
 use crate::common::permission::{Permission, PermissionChecker};
 use crate::database::domain::DbFileMetadata;
-use crate::database::file_usecases::{CreateFileUseCase, UpdateFileUseCase, FindFileByPathUseCase};
+use crate::database::file_usecases::{CreateFileUseCase, FindFileByPathUseCase, UpdateFileUseCase};
 use crate::database::user_usecases::FindUserUseCase;
 use crate::file::domain::FileMetadata;
 use crate::file::interfaces::IFileRepository;
 use crate::share::service::ShareService;
 use crate::user::domain::User;
-use std::sync::Arc;
-use sha2::{Sha256, Digest};
 use flate2::write::GzEncoder;
 use flate2::Compression;
+use sha2::{Digest, Sha256};
 use std::io::Write;
+use std::sync::Arc;
 
 const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024;
 
@@ -100,16 +100,17 @@ impl UploadUseCase {
 
         let checksum = hex::encode(Sha256::digest(&data));
 
-        // Compression logic (transparent)
         let mut final_data = data;
         let ext = filename.split('.').last().unwrap_or("").to_lowercase();
-        let compressible = matches!(ext.as_str(), "txt" | "md" | "json" | "csv" | "xml" | "html" | "sql" | "js" | "ts" | "rs" | "dart");
-        
+        let compressible = matches!(
+            ext.as_str(),
+            "txt" | "md" | "json" | "csv" | "xml" | "html" | "sql" | "js" | "ts" | "rs" | "dart"
+        );
+
         if compressible {
             let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
             if encoder.write_all(&final_data).is_ok() {
                 if let Ok(compressed) = encoder.finish() {
-                    // Only use compressed if it's actually smaller
                     if compressed.len() < final_data.len() {
                         final_data = compressed;
                     }
@@ -122,8 +123,13 @@ impl UploadUseCase {
 
         let owner_id = self.get_user_id(&user.username).await?;
         let storage_path = format!("/{}", resolved);
-        
-        let existing = self.find_db_file.execute(&storage_path).await.ok().flatten();
+
+        let existing = self
+            .find_db_file
+            .execute(&storage_path)
+            .await
+            .ok()
+            .flatten();
 
         if let Some(mut db_entry) = existing {
             db_entry.size_bytes = size as i64;

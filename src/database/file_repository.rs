@@ -66,7 +66,6 @@ impl IFileDatabaseRepository for FileRepository {
     async fn update(&self, file: &DbFileMetadata) -> Result<()> {
         let id_str = file.id.to_string();
 
-        // 1. Save current state to file_versions
         let current = self.find_by_id(file.id).await?;
         if let Some(old) = current {
             let version_id = Uuid::new_v4().to_string();
@@ -83,16 +82,13 @@ impl IFileDatabaseRepository for FileRepository {
             .await?;
         }
 
-        // 2. Update files table
-        sqlx::query(
-            "UPDATE files SET size_bytes = ?, checksum = ?, updated_at = ? WHERE id = ?"
-        )
-        .bind(file.size_bytes)
-        .bind(&file.checksum)
-        .bind(file.updated_at)
-        .bind(&id_str)
-        .execute(&*self.db.pool)
-        .await?;
+        sqlx::query("UPDATE files SET size_bytes = ?, checksum = ?, updated_at = ? WHERE id = ?")
+            .bind(file.size_bytes)
+            .bind(&file.checksum)
+            .bind(file.updated_at)
+            .bind(&id_str)
+            .execute(&*self.db.pool)
+            .await?;
 
         Ok(())
     }
@@ -101,15 +97,13 @@ impl IFileDatabaseRepository for FileRepository {
         let id_str = id.to_string();
         let now = chrono::Utc::now();
 
-        sqlx::query(
-            "UPDATE files SET storage_path = ?, filename = ?, updated_at = ? WHERE id = ?"
-        )
-        .bind(new_storage_path)
-        .bind(new_filename)
-        .bind(now)
-        .bind(&id_str)
-        .execute(&*self.db.pool)
-        .await?;
+        sqlx::query("UPDATE files SET storage_path = ?, filename = ?, updated_at = ? WHERE id = ?")
+            .bind(new_storage_path)
+            .bind(new_filename)
+            .bind(now)
+            .bind(&id_str)
+            .execute(&*self.db.pool)
+            .await?;
 
         Ok(())
     }

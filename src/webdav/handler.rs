@@ -33,7 +33,6 @@ async fn handle_request(
     auth: Arc<AuthService>,
     files: Arc<FileService>,
 ) -> Result<WebDavResponse, BoxError> {
-    // 1. Authenticate user
     let user = match authenticate(&req, auth).await {
         Ok(u) => u,
         Err(_) => {
@@ -52,7 +51,6 @@ async fn handle_request(
 
     info!("WebDAV: {} {} for user {}", method, path, user.username);
 
-    // Standard WebDAV routing
     match method.as_str() {
         "OPTIONS" => handle_options(),
         "PROPFIND" => handle_propfind(&req, &user, &path, files).await,
@@ -93,15 +91,13 @@ async fn authenticate(
     Err(DomainError::InvalidCredentials)
 }
 
-// -----------------------------------------------------------------------------
-// WebDAV Method Handlers
-// -----------------------------------------------------------------------------
-
 fn handle_options() -> Result<WebDavResponse, BoxError> {
     let mut res = Response::new(Full::new(Bytes::new()));
     res.headers_mut().insert(
         header::ALLOW,
-        "OPTIONS, PROPFIND, GET, PUT, MKCOL, DELETE".parse().unwrap(),
+        "OPTIONS, PROPFIND, GET, PUT, MKCOL, DELETE"
+            .parse()
+            .unwrap(),
     );
     res.headers_mut().insert(
         header::HeaderName::from_static("dav"),
@@ -116,7 +112,6 @@ async fn handle_propfind(
     path: &str,
     files: Arc<FileService>,
 ) -> Result<WebDavResponse, BoxError> {
-    // Determine depth
     let depth = req
         .headers()
         .get("Depth")
@@ -139,25 +134,26 @@ async fn handle_propfind(
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"utf-8\" ?>\n");
     xml.push_str("<D:multistatus xmlns:D=\"DAV:\">\n");
 
-    // Helper to generate a response node
     let build_response = |name: &str, p_is_dir: bool, size: u64| -> String {
         let mut entry = format!(
             "<D:response>\n  <D:href>{}</D:href>\n  <D:propstat>\n    <D:prop>\n",
             name
         );
-        
+
         if p_is_dir {
             entry.push_str("      <D:resourcetype><D:collection/></D:resourcetype>\n");
         } else {
             entry.push_str("      <D:resourcetype/>\n");
-            entry.push_str(&format!("      <D:getcontentlength>{}</D:getcontentlength>\n", size));
+            entry.push_str(&format!(
+                "      <D:getcontentlength>{}</D:getcontentlength>\n",
+                size
+            ));
         }
 
         entry.push_str("    </D:prop>\n    <D:status>HTTP/1.1 200 OK</D:status>\n  </D:propstat>\n</D:response>\n");
         entry
     };
 
-    // Always include the current resource
     if path == "/" {
         xml.push_str(&build_response("/", true, 0));
     } else {
@@ -177,13 +173,18 @@ async fn handle_propfind(
                 } else {
                     format!("{}/{}", path, name)
                 };
-                
+
                 let size = if !entry_is_dir {
-                    files.stat(user, "/", &entry_path).await.unwrap_or(Some((0, false, None))).unwrap_or((0, false, None)).0
+                    files
+                        .stat(user, "/", &entry_path)
+                        .await
+                        .unwrap_or(Some((0, false, None)))
+                        .unwrap_or((0, false, None))
+                        .0
                 } else {
                     0
                 };
-                
+
                 xml.push_str(&build_response(&entry_path, entry_is_dir, size));
             }
         }
@@ -229,11 +230,13 @@ async fn handle_put(
     path: &str,
     files: Arc<FileService>,
 ) -> Result<WebDavResponse, BoxError> {
-    // Read the entire body
     let body_bytes = req.into_body().collect().await?.to_bytes();
     let size = body_bytes.len() as u64;
 
-    match files.upload(user, "/", path, size, body_bytes.to_vec()).await {
+    match files
+        .upload(user, "/", path, size, body_bytes.to_vec())
+        .await
+    {
         Ok(_) => {
             let mut res = Response::new(Full::new(Bytes::new()));
             *res.status_mut() = StatusCode::CREATED;

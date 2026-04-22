@@ -12,12 +12,7 @@ impl DirExistsUseCase {
         Self { file_repo }
     }
 
-    pub async fn execute(
-        &self,
-        user: &User,
-        cwd: &str,
-        dirname: &str,
-    ) -> bool {
+    pub async fn execute(&self, user: &User, cwd: &str, dirname: &str) -> bool {
         let resolved = PermissionChecker::resolve_path(cwd, dirname);
 
         if !PermissionChecker::is_safe_path(&resolved) {
@@ -25,7 +20,7 @@ impl DirExistsUseCase {
         }
 
         if resolved == "shared" || resolved.starts_with("shared/") {
-            return false;
+            return true;
         }
 
         self.file_repo.dir_exists(&user.username, &resolved).await

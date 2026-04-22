@@ -100,9 +100,9 @@ impl Handler for HashHandler {
         match self.files.stat(&user, &cwd, target).await {
             Ok(Some((_, is_dir, checksum_opt))) if !is_dir => {
                 if let Some(checksum) = checksum_opt {
-                     ctx.write_line(&format!("213 {}", checksum));
+                    ctx.write_line(&format!("213 {}", checksum));
                 } else {
-                     ctx.error(550, "Hash not available.");
+                    ctx.error(550, "Hash not available.");
                 }
             }
             _ => ctx.error(550, "File unavailable or is a directory."),

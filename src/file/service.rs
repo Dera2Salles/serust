@@ -108,12 +108,7 @@ impl FileService {
         self.dir_exists.execute(user, cwd, dirname).await
     }
 
-    pub async fn restore(
-        &self,
-        user: &User,
-        cwd: &str,
-        filename: &str,
-    ) -> Result<(), DomainError> {
+    pub async fn restore(&self, user: &User, cwd: &str, filename: &str) -> Result<(), DomainError> {
         self.restore.execute(user, cwd, filename).await
     }
 

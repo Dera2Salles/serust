@@ -1,19 +1,25 @@
 use crate::database::{
-    domain::{DbAccessLog, DbFileMetadata, DbShareGrant, DbShareLink, DbUser},
     access_log_repository::AccessLogRepository as DbAccessLogRepository,
+    domain::{DbAccessLog, DbFileMetadata, DbShareGrant, DbShareLink, DbUser},
     file_repository::FileRepository as DbFileRepository,
-    share_repository::ShareRepository as DbShareRepository,
-    user_repository::UserRepository as DbUserRepository,
-    Database,
-    interfaces::{IAccessLogRepository, IFileDatabaseRepository, IShareDatabaseRepository, IUserRepository},
-    user_usecases::{CreateUserUseCase, FindUserUseCase},
-    file_usecases::{CreateFileUseCase, FindFileUseCase, UpdateFileUseCase, FindFileByPathUseCase, RenameFileDbUseCase, SoftDeleteFileDbUseCase, RestoreFileDbUseCase, FindDeletedFilesDbUseCase, PermanentDeleteFileDbUseCase},
-    share_usecases::{CreateLinkUseCase, CreateGrantUseCase},
+    file_usecases::{
+        CreateFileUseCase, FindDeletedFilesDbUseCase, FindFileByPathUseCase, FindFileUseCase,
+        PermanentDeleteFileDbUseCase, RenameFileDbUseCase, RestoreFileDbUseCase,
+        SoftDeleteFileDbUseCase, UpdateFileUseCase,
+    },
+    interfaces::{
+        IAccessLogRepository, IFileDatabaseRepository, IShareDatabaseRepository, IUserRepository,
+    },
     log_usecases::LogAccessUseCase,
+    share_repository::ShareRepository as DbShareRepository,
+    share_usecases::{CreateGrantUseCase, CreateLinkUseCase},
+    user_repository::UserRepository as DbUserRepository,
+    user_usecases::{CreateUserUseCase, FindUserUseCase},
+    Database,
 };
+use crate::file::interfaces::IFileRepository;
 use crate::file::local_repository::FileRepository;
 use crate::file::service::FileService;
-use crate::file::interfaces::IFileRepository;
 use crate::share::local_repository::ShareRepository;
 use crate::share::service::ShareService;
 use crate::user::service::AuthService;
@@ -34,28 +40,62 @@ pub async fn setup_injection() -> Result<Services> {
 
     info!("Initialisation de la base de données SQLite...");
     let db = Database::new("sqlite:development.db").await?;
-    
+
     let db_user_repo = Arc::new(DbUserRepository::new(db.clone()));
     let db_file_repo = Arc::new(DbFileRepository::new(db.clone()));
     let db_share_repo = DbShareRepository::new(db.clone());
     let db_log_repo = DbAccessLogRepository::new(db.clone());
 
-    let create_user_usecase = Arc::new(CreateUserUseCase::new(Arc::clone(&db_user_repo) as Arc<dyn IUserRepository>));
-    let find_user_usecase = Arc::new(FindUserUseCase::new(Arc::clone(&db_user_repo) as Arc<dyn IUserRepository>));
-    let create_file_usecase = Arc::new(CreateFileUseCase::new(Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>));
-    let find_file_usecase = Arc::new(FindFileUseCase::new(Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>));
-    let update_file_usecase = Arc::new(UpdateFileUseCase::new(Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>));
-    let find_file_by_path_usecase = Arc::new(FindFileByPathUseCase::new(Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>));
-    let rename_db_file_usecase = Arc::new(RenameFileDbUseCase::new(Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>));
-    let soft_delete_db_file_usecase = Arc::new(SoftDeleteFileDbUseCase::new(Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>));
-    let restore_db_file_usecase = Arc::new(RestoreFileDbUseCase::new(Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>));
-    let find_deleted_files_db_usecase = Arc::new(FindDeletedFilesDbUseCase::new(Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>));
-    let permanent_delete_db_file_usecase = Arc::new(PermanentDeleteFileDbUseCase::new(Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>));
-    let create_link_usecase = Arc::new(CreateLinkUseCase::new(Arc::new(db_share_repo.clone()) as Arc<dyn IShareDatabaseRepository>));
-    let create_grant_usecase = Arc::new(CreateGrantUseCase::new(Arc::new(db_share_repo.clone()) as Arc<dyn IShareDatabaseRepository>));
-    let log_access_usecase = Arc::new(LogAccessUseCase::new(Arc::new(db_log_repo.clone()) as Arc<dyn IAccessLogRepository>));
+    let create_user_usecase = Arc::new(CreateUserUseCase::new(
+        Arc::clone(&db_user_repo) as Arc<dyn IUserRepository>
+    ));
+    let find_user_usecase = Arc::new(FindUserUseCase::new(
+        Arc::clone(&db_user_repo) as Arc<dyn IUserRepository>
+    ));
+    let create_file_usecase = Arc::new(CreateFileUseCase::new(
+        Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>
+    ));
+    let find_file_usecase = Arc::new(FindFileUseCase::new(
+        Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>
+    ));
+    let update_file_usecase = Arc::new(UpdateFileUseCase::new(
+        Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>
+    ));
+    let find_file_by_path_usecase = Arc::new(FindFileByPathUseCase::new(
+        Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>
+    ));
+    let rename_db_file_usecase = Arc::new(RenameFileDbUseCase::new(
+        Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>
+    ));
+    let soft_delete_db_file_usecase = Arc::new(SoftDeleteFileDbUseCase::new(Arc::clone(
+        &db_file_repo,
+    )
+        as Arc<dyn IFileDatabaseRepository>));
+    let restore_db_file_usecase = Arc::new(RestoreFileDbUseCase::new(
+        Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>
+    ));
+    let find_deleted_files_db_usecase = Arc::new(FindDeletedFilesDbUseCase::new(Arc::clone(
+        &db_file_repo,
+    )
+        as Arc<dyn IFileDatabaseRepository>));
+    let permanent_delete_db_file_usecase = Arc::new(PermanentDeleteFileDbUseCase::new(Arc::clone(
+        &db_file_repo,
+    )
+        as Arc<dyn IFileDatabaseRepository>));
+    let create_link_usecase = Arc::new(CreateLinkUseCase::new(
+        Arc::new(db_share_repo.clone()) as Arc<dyn IShareDatabaseRepository>
+    ));
+    let create_grant_usecase = Arc::new(CreateGrantUseCase::new(
+        Arc::new(db_share_repo.clone()) as Arc<dyn IShareDatabaseRepository>
+    ));
+    let log_access_usecase = Arc::new(LogAccessUseCase::new(
+        Arc::new(db_log_repo.clone()) as Arc<dyn IAccessLogRepository>
+    ));
 
-    let auth_service = Arc::new(AuthService::new(Arc::clone(&find_user_usecase), Arc::clone(&create_user_usecase)));
+    let auth_service = Arc::new(AuthService::new(
+        Arc::clone(&find_user_usecase),
+        Arc::clone(&create_user_usecase),
+    ));
     let share_service = Arc::new(ShareService::new(Arc::clone(&share_repo)));
 
     let download_usecase = Arc::new(crate::file::DownloadUseCase::new(
@@ -98,10 +138,10 @@ pub async fn setup_injection() -> Result<Services> {
         Arc::clone(&rename_db_file_usecase),
     ));
     let rmdir_usecase = Arc::new(crate::file::RemoveDirUseCase::new(
-        Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
+        Arc::clone(&file_repo) as Arc<dyn IFileRepository>
     ));
     let dir_exists_usecase = Arc::new(crate::file::DirExistsUseCase::new(
-        Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
+        Arc::clone(&file_repo) as Arc<dyn IFileRepository>
     ));
     let restore_usecase = Arc::new(crate::file::RestoreUseCase::new(
         Arc::clone(&find_file_by_path_usecase),
@@ -142,11 +182,7 @@ pub async fn setup_injection() -> Result<Services> {
     }
 
     let admin_username = "admin_dev";
-    if find_user_usecase
-        .execute(admin_username)
-        .await?
-        .is_none()
-    {
+    if find_user_usecase.execute(admin_username).await?.is_none() {
         let dev_user = DbUser {
             id: uuid::Uuid::new_v4(),
             username: admin_username.to_string(),

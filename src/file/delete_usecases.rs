@@ -54,30 +54,30 @@ impl DeleteUseCase {
                 .consume_write(&user.username, &owner, &inner)
                 .await?;
             // Soft delete shared files? Usually we only allow owner to manage recycle bin.
-            // For shared files, we'll keep hard delete for now or implement "shared recycle bin" later.
             return self.file_repo.delete_file(&owner, &inner).await;
         }
 
-        if let Some(existing) = self
-            .file_repo
-            .get_metadata(&user.username, &resolved)
-            .await
-        {
+        if let Some(existing) = self.file_repo.get_metadata(&user.username, &resolved).await {
             if !PermissionChecker::can_access(user, &existing.owner, &Permission::Write) {
                 return Err(DomainError::PermissionDenied);
             }
         } else {
-             return Err(DomainError::FileNotFound);
+            return Err(DomainError::FileNotFound);
         }
 
         let storage_path = format!("/{}", resolved);
         if let Ok(Some(db_meta)) = self.find_db_file.execute(&storage_path).await {
             println!("DEBUG: Found file in DB for soft delete: {}", storage_path);
-            self.soft_delete_db_file.execute(db_meta.id).await.map_err(|e| DomainError::Internal(e.to_string()))?;
+            self.soft_delete_db_file
+                .execute(db_meta.id)
+                .await
+                .map_err(|e| DomainError::Internal(e.to_string()))?;
             Ok(())
         } else {
-            println!("DEBUG: File not found in DB for soft delete, falling back to hard delete: {}", storage_path);
-            // Fallback to hard delete if not in DB (should not happen with new sync logic)
+            println!(
+                "DEBUG: File not found in DB for soft delete, falling back to hard delete: {}",
+                storage_path
+            );
             self.file_repo.delete_file(&user.username, &resolved).await
         }
     }

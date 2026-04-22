@@ -81,12 +81,15 @@ impl ListUseCase {
         Ok(result)
     }
 
-    pub async fn execute(&self, user: &User, cwd: &str) -> Result<Vec<(String, bool)>, DomainError> {
+    pub async fn execute(
+        &self,
+        user: &User,
+        cwd: &str,
+    ) -> Result<Vec<(String, bool)>, DomainError> {
         let resolved = PermissionChecker::resolve_path(cwd, "");
 
         if resolved.is_empty() {
             let entries = self.file_repo.list_entries(&user.username, "").await?;
-            // Filter deleted
             let mut filtered = Vec::new();
             for (name, is_dir) in entries {
                 if name == "shared" && is_dir {
@@ -141,7 +144,10 @@ impl ListUseCase {
             return Ok(children);
         }
 
-        let entries = self.file_repo.list_entries(&user.username, &resolved).await?;
+        let entries = self
+            .file_repo
+            .list_entries(&user.username, &resolved)
+            .await?;
         let mut filtered = Vec::new();
         for (name, is_dir) in entries {
             let storage_path = format!("/{}", PermissionChecker::resolve_path(&resolved, &name));

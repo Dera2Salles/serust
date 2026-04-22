@@ -163,7 +163,7 @@ impl ShareService {
             return true;
         }
         if target.is_empty() {
-            return true; 
+            return true;
         }
         let target_prefix = format!("{}/", target.trim_end_matches('/'));
         grant_path.starts_with(&target_prefix)

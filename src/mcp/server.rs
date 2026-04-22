@@ -1,5 +1,7 @@
 use crate::database::analytics_repository::AnalyticsRepository;
-use crate::database::interfaces::{IFileDatabaseRepository, IShareDatabaseRepository, IUserRepository};
+use crate::database::interfaces::{
+    IFileDatabaseRepository, IShareDatabaseRepository, IUserRepository,
+};
 use crate::database::{
     file_repository::FileRepository as DbFileRepository,
     share_repository::ShareRepository as DbShareRepository, Database,
@@ -82,13 +84,11 @@ async fn handle_http(
         return Ok(resp);
     }
 
-    // ── Route: public file download by share token ────────────────────────────
     if method == Method::GET && path.starts_with("/public/") {
         let token = path.trim_start_matches("/public/");
         return Ok(handle_public_download(token, &state, &cors_headers).await);
     }
 
-    // ── Analytics routes ──────────────────────────────────────────────────────
     if method == Method::GET && path == "/api/storage/stats" {
         let username = extract_query_param(&query, "username").unwrap_or("alice");
         let user = crate::user::domain::User {
@@ -185,8 +185,7 @@ async fn handle_http(
                     json_bytes_response(StatusCode::OK, body, &cors_headers)
                 }
                 Err(e) => {
-                    let resp =
-                        JsonRpcResponse::err(None, -32700, format!("Parse error: {}", e));
+                    let resp = JsonRpcResponse::err(None, -32700, format!("Parse error: {}", e));
                     let body = serde_json::to_vec(&resp).unwrap_or_default();
                     json_bytes_response(StatusCode::OK, body, &cors_headers)
                 }
@@ -203,8 +202,6 @@ async fn handle_http(
     Ok(response_body)
 }
 
-// ── Public share download ─────────────────────────────────────────────────────
-
 async fn handle_public_download(
     token: &str,
     state: &McpServerState,
@@ -216,7 +213,6 @@ async fn handle_public_download(
     let user_repo = crate::database::user_repository::UserRepository::new(state.db.clone());
     let file_repo = DbFileRepository::new(state.db.clone());
 
-    // 1. Resolve token
     let link = match share_repo.find_link_by_token(token).await {
         Ok(Some(l)) => l,
         Ok(None) => {
@@ -235,7 +231,6 @@ async fn handle_public_download(
         }
     };
 
-    // 2. Check permissions
     if !link.can_read || !link.is_active {
         return json_response(
             StatusCode::FORBIDDEN,
@@ -244,7 +239,6 @@ async fn handle_public_download(
         );
     }
 
-    // 3. Check expiry
     if let Some(exp) = link.expires_at {
         if exp < chrono::Utc::now() {
             return json_response(
@@ -255,7 +249,6 @@ async fn handle_public_download(
         }
     }
 
-    // 4. Resolve the file metadata from DB
     let file_meta = match file_repo.find_by_id(link.file_id).await {
         Ok(Some(f)) => f,
         Ok(None) => {
@@ -274,11 +267,10 @@ async fn handle_public_download(
         }
     };
 
-    // 5. Resolve the owner to get password_hash for decryption
     let owner = match user_repo.find_by_id(file_meta.owner_id).await {
         Ok(Some(u)) => u,
         _ => {
-             return json_response(
+            return json_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 json!({"error": "Owner not found"}),
                 cors_headers,
@@ -286,43 +278,43 @@ async fn handle_public_download(
         }
     };
 
-    // 6. Use DownloadUseCase to get data (includes transparent decryption/decompression)
-    // We mock a User object with the owner's credentials to satisfy the UseCase
     let user_domain = crate::user::domain::User {
         username: owner.username.clone(),
         password_hash: owner.password_hash.clone(),
     };
-    
-    // We need DownloadUseCase. In McpServerState we have file_service.
-    // DownloadUseCase is internal to FileService but we can use file_service.download()
-    let data = match state.file_service.download(&user_domain, "/", &file_meta.filename).await {
+
+    let data = match state
+        .file_service
+        .download(&user_domain, "/", &file_meta.filename)
+        .await
+    {
         Ok(d) => d,
         Err(e) => {
-            return json_response(StatusCode::INTERNAL_SERVER_ERROR, json!({"error": e.to_string()}), cors_headers);
+            return json_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({"error": e.to_string()}),
+                cors_headers,
+            );
         }
     };
 
-    // 7. Serve file with content-type and content-disposition
     let mime = file_meta
         .mime_type
         .unwrap_or_else(|| "application/octet-stream".into());
     let filename = file_meta.filename;
 
-    let mut resp =
-        hyper::Response::new(http_body_util::Full::new(bytes::Bytes::from(data)));
+    let mut resp = hyper::Response::new(http_body_util::Full::new(bytes::Bytes::from(data)));
     *resp.status_mut() = StatusCode::OK;
     resp.headers_mut().insert(
         hyper::header::CONTENT_TYPE,
-        hyper::header::HeaderValue::from_str(&mime)
-            .unwrap_or(hyper::header::HeaderValue::from_static("application/octet-stream")),
+        hyper::header::HeaderValue::from_str(&mime).unwrap_or(
+            hyper::header::HeaderValue::from_static("application/octet-stream"),
+        ),
     );
     resp.headers_mut().insert(
         hyper::header::HeaderName::from_static("content-disposition"),
-        hyper::header::HeaderValue::from_str(&format!(
-            "attachment; filename=\"{}\"",
-            filename
-        ))
-        .unwrap_or(hyper::header::HeaderValue::from_static("attachment")),
+        hyper::header::HeaderValue::from_str(&format!("attachment; filename=\"{}\"", filename))
+            .unwrap_or(hyper::header::HeaderValue::from_static("attachment")),
     );
     for (k, v) in cors_headers {
         if let (Ok(name), Ok(val)) = (
@@ -335,8 +327,6 @@ async fn handle_public_download(
     resp
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 fn extract_query_param<'a>(query: &'a str, key: &str) -> Option<&'a str> {
     query.split('&').find_map(|kv| {
         let mut parts = kv.splitn(2, '=');
@@ -347,8 +337,6 @@ fn extract_query_param<'a>(query: &'a str, key: &str) -> Option<&'a str> {
         }
     })
 }
-
-// ── JSON-RPC dispatch ─────────────────────────────────────────────────────────
 
 async fn dispatch_rpc(req: JsonRpcRequest, registry: &Arc<McpRegistry>) -> JsonRpcResponse {
     let id = req.id.clone();

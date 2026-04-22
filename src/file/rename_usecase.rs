@@ -60,7 +60,6 @@ impl RenameUseCase {
             .rename(&user.username, &old_resolved, &new_resolved)
             .await?;
 
-        // Synchronize with database
         let old_storage_path = format!("/{}", old_resolved);
         if let Ok(Some(db_meta)) = self.find_db_file.execute(&old_storage_path).await {
             let new_filename = new_resolved

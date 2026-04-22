@@ -84,4 +84,29 @@ impl IUserRepository for UserRepository {
             Ok(None)
         }
     }
+
+    async fn search_users(&self, query: &str) -> Result<Vec<DbUser>> {
+        let pattern = format!("%{}%", query);
+        let rows = sqlx::query(
+            "SELECT id, username, password_hash, email, created_at, storage_quota_bytes, is_active FROM users WHERE username LIKE ? LIMIT 10"
+        )
+        .bind(pattern)
+        .fetch_all(&*self.db.pool)
+        .await?;
+
+        let mut users = Vec::new();
+        for r in rows {
+            let id_str: String = r.try_get("id")?;
+            users.push(DbUser {
+                id: Uuid::parse_str(&id_str)?,
+                username: r.try_get("username")?,
+                password_hash: r.try_get("password_hash")?,
+                email: r.try_get("email")?,
+                created_at: r.try_get("created_at")?,
+                storage_quota_bytes: r.try_get("storage_quota_bytes")?,
+                is_active: r.try_get("is_active")?,
+            });
+        }
+        Ok(users)
+    }
 }

@@ -42,12 +42,12 @@ impl PurgeUseCase {
             .map_err(|e| DomainError::Internal(e.to_string()))?;
 
         for file in deleted_files {
-            // 1. Delete from physical storage
-            // storage_path in DB starts with /
-            let rel_path = file.storage_path.strip_prefix('/').unwrap_or(&file.storage_path);
+            let rel_path = file
+                .storage_path
+                .strip_prefix('/')
+                .unwrap_or(&file.storage_path);
             let _ = self.file_repo.delete_file(&user.username, rel_path).await;
 
-            // 2. Delete from database
             let _ = self.permanent_delete.execute(file.id).await;
         }
 

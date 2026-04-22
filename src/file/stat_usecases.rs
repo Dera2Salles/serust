@@ -58,7 +58,6 @@ impl StatUseCase {
                 None => return Ok(None),
             }
         } else {
-            // Check if deleted in DB
             let storage_path = format!("/{}", resolved);
             if let Ok(Some(db_meta)) = self.find_db_file.execute(&storage_path).await {
                 if db_meta.is_deleted {
@@ -75,11 +74,11 @@ impl StatUseCase {
         let mut checksum = None;
         if !is_dir {
             let storage_path = if let Some((owner, inner)) = Self::parse_shared(&resolved) {
-                 format!("/shared/{}/{}", owner, inner)
+                format!("/shared/{}/{}", owner, inner)
             } else {
-                 format!("/{}", resolved)
+                format!("/{}", resolved)
             };
-            
+
             if let Ok(Some(db_meta)) = self.find_db_file.execute(&storage_path).await {
                 checksum = db_meta.checksum;
             }

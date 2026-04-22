@@ -53,7 +53,6 @@ impl AnalyticsRepository {
         let bandwidth_by_day = self.bandwidth_by_day(username, 30).await?;
         let recent_activity = self.recent_activity(username, 20).await?;
 
-        // Global counters for this user
         let totals = sqlx::query(
             r#"
             SELECT
@@ -171,8 +170,9 @@ impl AnalyticsRepository {
         Ok(rows
             .iter()
             .map(|r| {
-                let accessed_at: chrono::DateTime<chrono::Utc> =
-                    r.try_get("accessed_at").unwrap_or_else(|_| chrono::Utc::now());
+                let accessed_at: chrono::DateTime<chrono::Utc> = r
+                    .try_get("accessed_at")
+                    .unwrap_or_else(|_| chrono::Utc::now());
                 RecentActivity {
                     action: r.try_get("action").unwrap_or_default(),
                     filename: r.try_get("filename").unwrap_or_default(),

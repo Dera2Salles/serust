@@ -3,12 +3,12 @@ use crate::common::permission::{Permission, PermissionChecker};
 use crate::file::interfaces::IFileRepository;
 use crate::share::service::ShareService;
 use crate::user::domain::User;
-use std::sync::Arc;
-use flate2::read::GzDecoder;
-use std::io::Read;
+use aes::cipher::{BlockDecryptMut, KeyIvInit};
 use aes::Aes256;
 use cbc::Decryptor;
-use aes::cipher::{KeyIvInit, BlockDecryptMut};
+use flate2::read::GzDecoder;
+use std::io::Read;
+use std::sync::Arc;
 
 type Aes256CbcDec = Decryptor<Aes256>;
 
@@ -18,14 +18,8 @@ pub struct DownloadUseCase {
 }
 
 impl DownloadUseCase {
-    pub fn new(
-        file_repo: Arc<dyn IFileRepository>,
-        shares: Arc<ShareService>,
-    ) -> Self {
-        Self {
-            file_repo,
-            shares,
-        }
+    pub fn new(file_repo: Arc<dyn IFileRepository>, shares: Arc<ShareService>) -> Self {
+        Self { file_repo, shares }
     }
 
     fn parse_shared(resolved: &str) -> Option<(String, String)> {
@@ -49,8 +43,7 @@ impl DownloadUseCase {
             return data;
         }
 
-        // Key derivation: SHA-256 of password_hash (matching client's _deriveKey)
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(password_hash.as_bytes());
         let key = hasher.finalize();
@@ -59,11 +52,11 @@ impl DownloadUseCase {
         let encrypted_content = &data[magic.len() + 16..];
 
         let decryptor = Aes256CbcDec::new(&key.into(), iv.into());
-        
+
         let mut buffer = encrypted_content.to_vec();
         match decryptor.decrypt_padded_mut::<cbc::cipher::block_padding::Pkcs7>(&mut buffer) {
             Ok(decrypted) => decrypted.to_vec(),
-            Err(_) => data, // Return original if decryption fails
+            Err(_) => data,
         }
     }
 
@@ -89,18 +82,10 @@ impl DownloadUseCase {
             {
                 return Err(DomainError::PermissionDenied);
             }
-            // For shared files, we need the owner's password hash if we want to decrypt
-            // But usually E2EE means only the owner can decrypt.
-            // However, the prompt asks for "reverse", so we'll try to decrypt with current user's hash
-            // (assuming user implements a way to share keys later, or SSE).
             self.file_repo.load(&owner, &inner).await?
         } else {
-            // Check if deleted in DB
             let _storage_path = format!("/{}", resolved);
-            // We need find_db_file here. Let's see if it's available.
-            // Wait, DownloadUseCase doesn't have find_db_file.
-            // I should probably add it.
-            
+
             let meta = self
                 .file_repo
                 .get_metadata(&user.username, &resolved)
@@ -114,10 +99,8 @@ impl DownloadUseCase {
             self.file_repo.load(&user.username, &resolved).await?
         };
 
-        // 1. Transparent decryption
         let data = Self::decrypt_if_needed(data, &password_hash);
 
-        // 2. Transparent decompression
         let data = if data.starts_with(&[0x1f, 0x8b]) {
             let mut decoder = GzDecoder::new(&data[..]);
             let mut decompressed = Vec::new();

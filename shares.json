@@ -26,5 +26,33 @@
     "can_reshare": false,
     "granted_by": "alice",
     "expires_at": null
+  },
+  {
+    "owner": "alice",
+    "path": "Gemini_Generated_Image_xq5iy6xq5iy6xq5i.png",
+    "grantee": "dera",
+    "can_read": true,
+    "can_write": false,
+    "can_download": true,
+    "remaining_reads": null,
+    "remaining_writes": null,
+    "remaining_downloads": null,
+    "can_reshare": false,
+    "granted_by": "alice",
+    "expires_at": null
+  },
+  {
+    "owner": "alice",
+    "path": "Antsaha-renamed/WA_1776533089322.jpeg",
+    "grantee": "dera",
+    "can_read": true,
+    "can_write": false,
+    "can_download": true,
+    "remaining_reads": null,
+    "remaining_writes": null,
+    "remaining_downloads": null,
+    "can_reshare": false,
+    "granted_by": "alice",
+    "expires_at": null
   }
 ]

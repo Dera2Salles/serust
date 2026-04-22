@@ -9,11 +9,21 @@ use tracing::info;
 
 pub struct McpRegistry {
     file_service: Arc<FileService>,
+    user_repo: Arc<dyn crate::database::interfaces::IUserRepository>,
+    share_service: Arc<crate::share::service::ShareService>,
 }
 
 impl McpRegistry {
-    pub fn new(file_service: Arc<FileService>) -> Self {
-        Self { file_service }
+    pub fn new(
+        file_service: Arc<FileService>,
+        user_repo: Arc<dyn crate::database::interfaces::IUserRepository>,
+        share_service: Arc<crate::share::service::ShareService>,
+    ) -> Self {
+        Self {
+            file_service,
+            user_repo,
+            share_service,
+        }
     }
 
     pub fn list_tools(&self) -> Vec<McpTool> {
@@ -135,6 +145,43 @@ impl McpRegistry {
                     "required": ["username", "path", "filename"]
                 }),
             },
+            McpTool {
+                name: "search_users".into(),
+                description: "Search for users by username.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string", "description": "Username snippet to search for" }
+                    },
+                    "required": ["query"]
+                }),
+            },
+            McpTool {
+                name: "create_share_grant".into(),
+                description: "Share a file or folder with a specific user.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "username": { "type": "string", "description": "The owner sharing the file" },
+                        "path": { "type": "string", "description": "Path to the file or folder" },
+                        "target_user": { "type": "string", "description": "Username of the user to share with" },
+                        "can_read": { "type": "boolean", "description": "Grant read permission", "default": true },
+                        "can_write": { "type": "boolean", "description": "Grant write permission", "default": false }
+                    },
+                    "required": ["username", "path", "target_user"]
+                }),
+            },
+            McpTool {
+                name: "list_outgoing_shares".into(),
+                description: "List all outgoing share grants created by a user.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "username": { "type": "string", "description": "The owner of the shared files" }
+                    },
+                    "required": ["username"]
+                }),
+            },
         ]
     }
 
@@ -150,6 +197,9 @@ impl McpRegistry {
             "rename_file" => self.tool_rename_file(args).await,
             "move_file" => self.tool_move_file(args).await,
             "read_file" => self.tool_read_file(args).await,
+            "search_users" => self.tool_search_users(args).await,
+            "create_share_grant" => self.tool_create_share_grant(args).await,
+            "list_outgoing_shares" => self.tool_list_outgoing_shares(args).await,
             _ => McpToolResult::error(format!("Unknown tool: {}", name)),
         }
     }
@@ -186,7 +236,6 @@ impl McpRegistry {
             if is_dir {
                 Box::pin(self.collect_resources(username, user, &full_path, depth + 1, out)).await;
             } else {
-                // Only expose text-readable files to the AI
                 if Self::is_text_readable(&name) {
                     let uri = format!("ftp://{}{}", username, full_path);
                     out.push(McpResource {
@@ -204,10 +253,38 @@ impl McpRegistry {
         let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
         matches!(
             ext.as_str(),
-            "txt" | "md" | "json" | "yaml" | "yml" | "toml" | "xml" | "html" | "htm"
-                | "css" | "js" | "ts" | "rs" | "dart" | "py" | "go" | "java" | "kt"
-                | "swift" | "c" | "cpp" | "h" | "sh" | "bash" | "env" | "csv"
-                | "log" | "conf" | "ini" | "sql" | "graphql" | "proto"
+            "txt"
+                | "md"
+                | "json"
+                | "yaml"
+                | "yml"
+                | "toml"
+                | "xml"
+                | "html"
+                | "htm"
+                | "css"
+                | "js"
+                | "ts"
+                | "rs"
+                | "dart"
+                | "py"
+                | "go"
+                | "java"
+                | "kt"
+                | "swift"
+                | "c"
+                | "cpp"
+                | "h"
+                | "sh"
+                | "bash"
+                | "env"
+                | "csv"
+                | "log"
+                | "conf"
+                | "ini"
+                | "sql"
+                | "graphql"
+                | "proto"
         )
     }
 
@@ -332,9 +409,11 @@ impl McpRegistry {
                 for (name, is_dir) in &entries {
                     let icon = if *is_dir { "📁" } else { "📄" };
                     let mut line = format!("  {} {}", icon, name);
-                    
+
                     if !is_dir {
-                        if let Ok(Some((size, _, Some(checksum)))) = self.file_service.stat(&user, path, name).await {
+                        if let Ok(Some((size, _, Some(checksum)))) =
+                            self.file_service.stat(&user, path, name).await
+                        {
                             line.push_str(&format!(" (size: {}, checksum: {})", size, checksum));
                         }
                     }
@@ -406,7 +485,11 @@ impl McpRegistry {
         let data = content.as_bytes().to_vec();
         let size = data.len() as u64;
 
-        match self.file_service.upload(&user, path, filename, size, data).await {
+        match self
+            .file_service
+            .upload(&user, path, filename, size, data)
+            .await
+        {
             Ok(_) => McpToolResult::success(format!("File '{}' created.", filename)),
             Err(e) => McpToolResult::error(format!("Error: {}", e)),
         }
@@ -475,7 +558,11 @@ impl McpRegistry {
         };
 
         let user = Self::make_user(username);
-        match self.file_service.rename(&user, path, old_name, new_name).await {
+        match self
+            .file_service
+            .rename(&user, path, old_name, new_name)
+            .await
+        {
             Ok(_) => McpToolResult::success(format!("Renamed '{}' to '{}'.", old_name, new_name)),
             Err(e) => McpToolResult::error(format!("Error: {}", e)),
         }
@@ -496,7 +583,7 @@ impl McpRegistry {
         };
 
         let user = Self::make_user(username);
-        const MAX_PREVIEW_BYTES: usize = 128 * 1024; // 128 KB cap for AI context
+        const MAX_PREVIEW_BYTES: usize = 128 * 1024;
         match self.file_service.download(&user, path, filename).await {
             Ok(data) => {
                 let truncated = data.len() > MAX_PREVIEW_BYTES;
@@ -528,8 +615,15 @@ impl McpRegistry {
         };
 
         let user = Self::make_user(username);
-        match self.file_service.rename(&user, "/", source_path, destination_path).await {
-            Ok(_) => McpToolResult::success(format!("Moved '{}' to '{}'.", source_path, destination_path)),
+        match self
+            .file_service
+            .rename(&user, "/", source_path, destination_path)
+            .await
+        {
+            Ok(_) => McpToolResult::success(format!(
+                "Moved '{}' to '{}'.",
+                source_path, destination_path
+            )),
             Err(e) => McpToolResult::error(format!("Error: {}", e)),
         }
     }
@@ -584,5 +678,94 @@ impl McpRegistry {
             }
         }
         results
+    }
+
+    async fn tool_search_users(&self, args: &Value) -> McpToolResult {
+        let query = match Self::get_str(args, "query") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+
+        match self.user_repo.search_users(query).await {
+            Ok(users) => {
+                let list: Vec<Value> = users
+                    .into_iter()
+                    .map(|u| json!({ "username": u.username }))
+                    .collect();
+                McpToolResult::success(json!({ "users": list }).to_string())
+            }
+            Err(e) => McpToolResult::error(format!("Database error: {}", e)),
+        }
+    }
+
+    async fn tool_create_share_grant(&self, args: &Value) -> McpToolResult {
+        let username = match Self::get_str(args, "username") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let path = match Self::get_str(args, "path") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let target_user = match Self::get_str(args, "target_user") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+
+        let can_read = args
+            .get("can_read")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        let can_write = args
+            .get("can_write")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        match self
+            .share_service
+            .grant(
+                username,
+                "/",
+                path,
+                target_user,
+                can_read,
+                can_write,
+                true,
+                None,
+                None,
+                None,
+                false,
+                username,
+                None,
+            )
+            .await
+        {
+            Ok(_) => {
+                McpToolResult::success(format!("Successfully shared {} with {}", path, target_user))
+            }
+            Err(e) => McpToolResult::error(format!("Error sharing file: {:?}", e)),
+        }
+    }
+
+    async fn tool_list_outgoing_shares(&self, args: &Value) -> McpToolResult {
+        let username = match Self::get_str(args, "username") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+
+        let grants = self.share_service.list_outgoing(username).await;
+        
+        let list: Vec<Value> = grants
+            .into_iter()
+            .map(|g| json!({
+                "path": g.path,
+                "grantee": g.grantee,
+                "can_read": g.can_read,
+                "can_write": g.can_write,
+                "expires_at": g.expires_at,
+            }))
+            .collect();
+
+        McpToolResult::success(json!({ "shares": list }).to_string())
     }
 }
