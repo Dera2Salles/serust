@@ -8,6 +8,7 @@ mod mcp;
 mod server;
 mod share;
 mod user;
+mod webdav;
 
 use framework::metrics::Metrics;
 use mcp::{registry::McpRegistry, server::{run_mcp_server, McpServerState}};
@@ -59,6 +60,32 @@ async fn main() -> anyhow::Result<()> {
                 tokio::spawn(async move {
                     let _ = handler.handle().await;
                 });
+            }
+        }
+    });
+
+    let webdav_auth = Arc::clone(&auth_service);
+    let webdav_files = Arc::clone(&file_service);
+    tokio::spawn(async move {
+        let addr: std::net::SocketAddr = "0.0.0.0:8083".parse().unwrap();
+        if let Ok(listener) = tokio::net::TcpListener::bind(addr).await {
+            tracing::info!("WebDAV HTTP server listening on {}", addr);
+            loop {
+                if let Ok((stream, _)) = listener.accept().await {
+                    let io = hyper_util::rt::TokioIo::new(stream);
+                    let auth = Arc::clone(&webdav_auth);
+                    let files = Arc::clone(&webdav_files);
+                    tokio::task::spawn(async move {
+                        if let Err(err) = hyper::server::conn::http1::Builder::new()
+                            .serve_connection(io, hyper::service::service_fn(move |req| {
+                                crate::webdav::handler::serve_webdav(req, Arc::clone(&auth), Arc::clone(&files))
+                            }))
+                            .await
+                        {
+                            tracing::error!("Error serving WebDAV connection: {:?}", err);
+                        }
+                    });
+                }
             }
         }
     });
