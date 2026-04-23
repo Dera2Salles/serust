@@ -28,18 +28,22 @@
   --color-flamingo: #f2cdcd;
   --color-rosewater: #f5e0dc;
 
-  --radius-oneui: 28px;
+  --radius-oneui: 32px;
   --radius-oneui-sm: 16px;
-  --radius-oneui-lg: 36px;
+  --radius-oneui-lg: 48px;
+  --radius-pill: 100px;
+  --radius-field: 24px;
 }
 
 @layer base {
   :root {
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'Space Grotesk', system-ui, -apple-system, sans-serif;
     line-height: 1.5;
     font-weight: 400;
     color: var(--color-text);
     background-color: var(--color-base);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   body {
@@ -47,42 +51,75 @@
     min-width: 320px;
     min-height: 100vh;
     background-color: var(--color-base);
+    overflow-x: hidden;
+  }
+
+  /* Custom Scrollbar (Catppuccin style) */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--color-mantle);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-surface1);
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-surface2);
+  }
+
+  ::selection {
+    background-color: rgba(137, 180, 250, 0.3);
+    color: var(--color-text);
   }
 }
 
 @layer components {
   .oneui-card {
-    background-color: var(--color-surface0);
+    background-color: var(--color-mantle);
     border-radius: var(--radius-oneui);
     padding: 1.5rem;
-    transition: all 0.2s;
+    border: 1px solid rgba(49, 50, 68, 0.5); /* mochaSurface0 with alpha */
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
   
   .oneui-card:active {
-    transform: scale(0.98);
+    transform: scale(0.985);
   }
   
   .oneui-header {
-    padding-top: 3rem;
-    padding-bottom: 2rem;
-    padding-left: 2rem;
-    padding-right: 2rem;
+    padding: 3rem 2rem 2rem 2rem;
     color: var(--color-text);
   }
 
   .oneui-button-primary {
     background-color: var(--color-blue);
     color: var(--color-crust);
-    font-weight: 600;
-    padding-left: 1.5rem;
-    padding-right: 1.5rem;
-    padding-top: 0.75rem;
-    padding-bottom: 0.75rem;
-    border-radius: 9999px;
-    transition: transform 0.1s;
+    font-weight: 800;
+    padding: 0.85rem 1.5rem;
+    border-radius: var(--radius-pill);
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 6px 12px rgba(137, 180, 250, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    letter-spacing: 0.01em;
+  }
+
+  .oneui-button-primary:hover {
+    filter: brightness(1.1);
   }
 
   .oneui-button-primary:active {
-    transform: scale(0.95);
+    transform: scale(0.96);
+  }
+
+  .oneui-button-primary:disabled {
+    opacity: 0.5;
+    transform: none;
+    box-shadow: none;
   }
 }

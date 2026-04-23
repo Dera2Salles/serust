@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Header, Card, Button, cn } from './OneUI';
-import { Search, User as UserIcon, Shield, MoreVertical } from 'lucide-react';
+import { Header, SoftCard, Button, ModernTextField, AroChip, cn } from './OneUI';
+import { Search, Shield, MoreVertical, Mail, Calendar } from 'lucide-react';
 import { callMcpTool } from '../lib/mcp';
 
 export const UserManagement = () => {
@@ -13,7 +13,6 @@ export const UserManagement = () => {
     setLoading(true);
     try {
       const result = await callMcpTool('search_users', { query });
-      // result.content[0].text is a JSON string of { users: [...] }
       const data = JSON.parse(result.content[0].text);
       setUsers(data.users || []);
     } catch (err) {
@@ -28,52 +27,62 @@ export const UserManagement = () => {
   }, []);
 
   return (
-    <div className="flex flex-col w-full min-h-screen bg-base pb-20">
+    <div className="flex flex-col w-full min-h-screen bg-transparent pb-20">
       <Header 
         title="Users" 
-        subtitle="Manage accounts and permissions" 
+        subtitle="Gérer les comptes et permissions" 
       />
 
-      <div className="px-8 mb-8">
-        <form onSubmit={handleSearch} className="relative max-w-2xl">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-overlay0" size={20} />
-          <input 
-            type="text"
-            placeholder="Search users by username..."
+      <div className="px-10 mb-10">
+        <form onSubmit={handleSearch} className="max-w-3xl">
+          <ModernTextField 
+            placeholder="Rechercher par nom d'utilisateur..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="w-full bg-surface0 border-none rounded-2xl py-4 pl-12 pr-4 text-text focus:ring-2 focus:ring-blue transition-all"
+            prefixIcon={<Search size={20} />}
           />
         </form>
       </div>
 
-      <div className="px-8 space-y-4">
+      <div className="px-10 space-y-4">
         {loading ? (
-          <p className="text-center py-10 text-subtext0">Searching users...</p>
+          <div className="flex flex-col items-center justify-center py-20 opacity-50">
+             <div className="w-10 h-10 border-4 border-blue/20 border-t-blue rounded-full animate-spin mb-4" />
+             <p className="text-subtext0 font-bold tracking-tight">Recherche en cours...</p>
+          </div>
         ) : users.length === 0 ? (
-          <p className="text-center py-10 text-subtext0">No users found.</p>
+          <SoftCard className="flex flex-col items-center justify-center py-20 border-dashed">
+            <Search size={48} className="text-surface2 mb-4 opacity-20" />
+            <p className="text-subtext0 font-bold">Aucun utilisateur trouvé</p>
+          </SoftCard>
         ) : (
           users.map((user, i) => (
-            <Card key={i} className="flex items-center justify-between group">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-blue/10 text-blue flex items-center justify-center font-bold text-xl">
+            <SoftCard key={i} className="flex items-center justify-between group hover:border-blue/20 transition-all py-5">
+              <div className="flex items-center gap-6">
+                <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-blue to-mauve text-crust flex items-center justify-center font-black text-2xl shadow-lg shadow-blue/10">
                   {user.username.charAt(0).toUpperCase()}
                 </div>
                 <div>
-                  <h4 className="font-semibold text-lg">{user.username}</h4>
-                  <p className="text-sm text-subtext0 flex items-center gap-1">
-                    <Shield size={14} className="text-green" /> Standard User
-                  </p>
+                  <div className="flex items-center gap-3 mb-1">
+                    <h4 className="font-black text-xl tracking-tighter">{user.username}</h4>
+                    <AroChip label="Actif" color="green" />
+                  </div>
+                  <div className="flex items-center gap-4 text-sm text-subtext0 font-medium">
+                    <span className="flex items-center gap-1.5"><Mail size={14} className="opacity-50" /> {user.email || 'Pas d\'email'}</span>
+                    <span className="flex items-center gap-1.5"><Calendar size={14} className="opacity-50" /> Membre depuis 2024</span>
+                  </div>
                 </div>
               </div>
               
-              <div className="flex items-center gap-2">
-                <Button variant="secondary" className="hidden group-hover:block px-4 py-2">View Stats</Button>
-                <button className="p-2 hover:bg-surface1 rounded-full transition-colors">
-                  <MoreVertical size={20} className="text-overlay0" />
+              <div className="flex items-center gap-3">
+                <Button variant="secondary" className="px-5 py-2 font-bold text-sm hidden sm:flex">
+                  Statistiques
+                </Button>
+                <button className="w-12 h-12 flex items-center justify-center hover:bg-surface0 rounded-2xl transition-colors">
+                  <MoreVertical size={20} className="text-subtext0" />
                 </button>
               </div>
-            </Card>
+            </SoftCard>
           ))
         )}
       </div>
