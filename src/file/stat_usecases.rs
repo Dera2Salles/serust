@@ -49,7 +49,25 @@ impl StatUseCase {
             return Err(DomainError::UnsafePath);
         }
 
+        if resolved == "shared" {
+            return Ok(Some((0, true, None)));
+        }
+
         let (size, is_dir) = if let Some((owner, inner)) = Self::parse_shared(&resolved) {
+            if inner.is_empty() {
+                let allowed = self
+                    .shares
+                    .owners_shared_with(&user.username)
+                    .await
+                    .into_iter()
+                    .any(|o| o == owner);
+                if allowed {
+                    return Ok(Some((0, true, None)));
+                } else {
+                    return Ok(None);
+                }
+            }
+
             if !self.shares.can_read(&user.username, &owner, &inner).await {
                 return Ok(None);
             }
