@@ -33,7 +33,12 @@ async fn main() -> anyhow::Result<()> {
     let file_service = services.file_service;
     let db = services.db;
 
-    let _metrics = Metrics::new();
+    let server = server::tcp_server::TcpServer::new(
+        Arc::clone(&auth_service),
+        Arc::clone(&file_service),
+        Arc::clone(&share_service),
+    );
+    let metrics = server.metrics();
 
     let mcp_registry = Arc::new(McpRegistry::new(
         Arc::clone(&file_service),
@@ -46,6 +51,7 @@ async fn main() -> anyhow::Result<()> {
         registry: Arc::clone(&mcp_registry),
         file_service: Arc::clone(&file_service),
         db: db.clone(),
+        metrics: Arc::clone(&metrics),
     });
     tokio::spawn(async move {
         if let Err(e) = run_mcp_server(mcp_state, "0.0.0.0:8081").await {
@@ -105,12 +111,6 @@ async fn main() -> anyhow::Result<()> {
             }
         }
     });
-
-    let server = server::tcp_server::TcpServer::new(
-        Arc::clone(&auth_service),
-        Arc::clone(&file_service),
-        Arc::clone(&share_service),
-    );
 
     server.run("0.0.0.0:8080").await?;
 

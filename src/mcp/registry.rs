@@ -182,6 +182,38 @@ impl McpRegistry {
                     "required": ["username"]
                 }),
             },
+            McpTool {
+                name: "list_all_users".into(),
+                description: "Admin: List all registered users on the server.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }),
+            },
+            McpTool {
+                name: "delete_user".into(),
+                description: "Admin: Permanently delete a user account.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "username": { "type": "string", "description": "Username of the account to delete" }
+                    },
+                    "required": ["username"]
+                }),
+            },
+            McpTool {
+                name: "update_user_status".into(),
+                description: "Admin: Enable or disable a user account.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "username": { "type": "string", "description": "Username of the account" },
+                        "is_active": { "type": "boolean", "description": "New status" }
+                    },
+                    "required": ["username", "is_active"]
+                }),
+            },
         ]
     }
 
@@ -200,6 +232,9 @@ impl McpRegistry {
             "search_users" => self.tool_search_users(args).await,
             "create_share_grant" => self.tool_create_share_grant(args).await,
             "list_outgoing_shares" => self.tool_list_outgoing_shares(args).await,
+            "list_all_users" => self.tool_list_all_users(args).await,
+            "delete_user" => self.tool_delete_user(args).await,
+            "update_user_status" => self.tool_update_user_status(args).await,
             _ => McpToolResult::error(format!("Unknown tool: {}", name)),
         }
     }
@@ -767,5 +802,64 @@ impl McpRegistry {
             .collect();
 
         McpToolResult::success(json!({ "shares": list }).to_string())
+    }
+
+    async fn tool_list_all_users(&self, _args: &Value) -> McpToolResult {
+        match self.user_repo.list_all().await {
+            Ok(users) => {
+                let list: Vec<Value> = users
+                    .into_iter()
+                    .map(|u| json!({
+                        "username": u.username,
+                        "email": u.email,
+                        "is_active": u.is_active,
+                        "created_at": u.created_at,
+                        "quota": u.storage_quota_bytes
+                    }))
+                    .collect();
+                McpToolResult::success(json!({ "users": list }).to_string())
+            }
+            Err(e) => McpToolResult::error(format!("Error listing users: {}", e)),
+        }
+    }
+
+    async fn tool_delete_user(&self, args: &Value) -> McpToolResult {
+        let username = match Self::get_str(args, "username") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+
+        match self.user_repo.find_by_username(username).await {
+            Ok(Some(user)) => {
+                if let Err(e) = self.user_repo.delete(user.id).await {
+                    McpToolResult::error(format!("Delete failed: {}", e))
+                } else {
+                    McpToolResult::success(format!("User '{}' deleted.", username))
+                }
+            }
+            Ok(None) => McpToolResult::error("User not found."),
+            Err(e) => McpToolResult::error(format!("Database error: {}", e)),
+        }
+    }
+
+    async fn tool_update_user_status(&self, args: &Value) -> McpToolResult {
+        let username = match Self::get_str(args, "username") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let is_active = args.get("is_active").and_then(|v| v.as_bool()).unwrap_or(true);
+
+        match self.user_repo.find_by_username(username).await {
+            Ok(Some(mut user)) => {
+                user.is_active = is_active;
+                if let Err(e) = self.user_repo.update(&user).await {
+                    McpToolResult::error(format!("Update failed: {}", e))
+                } else {
+                    McpToolResult::success(format!("User '{}' status updated to {}.", username, is_active))
+                }
+            }
+            Ok(None) => McpToolResult::error("User not found."),
+            Err(e) => McpToolResult::error(format!("Database error: {}", e)),
+        }
     }
 }

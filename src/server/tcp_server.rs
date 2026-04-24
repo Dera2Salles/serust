@@ -20,11 +20,17 @@ use crate::user::service::AuthService;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::framework::metrics::Metrics;
+
 pub struct TcpServer {
     app: App,
 }
 
 impl TcpServer {
+    pub fn metrics(&self) -> Arc<Metrics> {
+        Arc::clone(&self.app.metrics)
+    }
+
     pub fn new(
         auth_service: Arc<AuthService>,
         file_service: Arc<FileService>,

@@ -109,4 +109,52 @@ impl IUserRepository for UserRepository {
         }
         Ok(users)
     }
+
+    async fn update(&self, user: &DbUser) -> Result<()> {
+        let id_str = user.id.to_string();
+        sqlx::query(
+            "UPDATE users SET username = ?, password_hash = ?, email = ?, storage_quota_bytes = ?, is_active = ? WHERE id = ?"
+        )
+        .bind(&user.username)
+        .bind(&user.password_hash)
+        .bind(&user.email)
+        .bind(user.storage_quota_bytes)
+        .bind(user.is_active)
+        .bind(&id_str)
+        .execute(&*self.db.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn delete(&self, id: Uuid) -> Result<()> {
+        let id_str = id.to_string();
+        sqlx::query("DELETE FROM users WHERE id = ?")
+            .bind(&id_str)
+            .execute(&*self.db.pool)
+            .await?;
+        Ok(())
+    }
+
+    async fn list_all(&self) -> Result<Vec<DbUser>> {
+        let rows = sqlx::query(
+            "SELECT id, username, password_hash, email, created_at, storage_quota_bytes, is_active FROM users"
+        )
+        .fetch_all(&*self.db.pool)
+        .await?;
+
+        let mut users = Vec::new();
+        for r in rows {
+            let id_str: String = r.try_get("id")?;
+            users.push(DbUser {
+                id: Uuid::parse_str(&id_str)?,
+                username: r.try_get("username")?,
+                password_hash: r.try_get("password_hash")?,
+                email: r.try_get("email")?,
+                created_at: r.try_get("created_at")?,
+                storage_quota_bytes: r.try_get("storage_quota_bytes")?,
+                is_active: r.try_get("is_active")?,
+            });
+        }
+        Ok(users)
+    }
 }

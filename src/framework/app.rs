@@ -19,7 +19,7 @@ pub struct App {
     conn_timeout: Duration,
     router: Router,
     middlewares: Vec<Arc<dyn Middleware>>,
-    metrics: Arc<Metrics>,
+    pub metrics: Arc<Metrics>,
     banner: String,
 }
 
@@ -117,7 +117,7 @@ impl App {
                             };
 
                             configure_socket(&stream);
-                            metrics.connection_opened();
+                            metrics.connection_opened(peer_addr);
 
                             info!("+ {} ({} actives)", peer_addr,
                                 metrics.snapshot().active_connections);
@@ -173,7 +173,7 @@ async fn run_connection(
         Err(_) => warn!("- {} timeout", peer_addr),
     }
 
-    metrics.connection_closed();
+    metrics.connection_closed(peer_addr);
 }
 
 async fn handle_connection(
@@ -218,7 +218,7 @@ async fn handle_connection(
             break;
         }
 
-        metrics.command_received();
+        metrics.command_received(peer_addr, command.clone());
 
         let mut stopped = false;
         for mw in middlewares.iter() {
@@ -246,6 +246,10 @@ async fn handle_connection(
                             error!("Handler {} error: {}", command, e);
                             ctx.error(500, &e.to_string());
                             metrics.error_occurred();
+                        }
+
+                        if ctx.is_authenticated() {
+                            metrics.user_authenticated(peer_addr, ctx.user().username.clone());
                         }
                     }
                 }
