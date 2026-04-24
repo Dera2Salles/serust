@@ -207,4 +207,17 @@ impl IFileRepository for FileRepository {
     async fn get_metadata(&self, username: &str, rel_path: &str) -> Option<FileMetadata> {
         self.get_metadata(username, rel_path).await
     }
+
+    async fn get_reader(
+        &self,
+        username: &str,
+        rel_path: &str,
+    ) -> Result<tokio::fs::File, DomainError> {
+        let path = self.user_path(username, rel_path);
+        if !path.exists() {
+            return Err(DomainError::FileNotFound);
+        }
+        let file = fs::File::open(&path).await?;
+        Ok(file)
+    }
 }

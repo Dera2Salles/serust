@@ -67,7 +67,10 @@ async fn handle_request(
     match method.as_str() {
         "OPTIONS" => handle_options(),
         "PROPFIND" => handle_propfind(&req, &user, &path, files).await,
-        "GET" | "HEAD" => handle_get(&user, &path, files, method.as_str() == "HEAD").await,
+        "GET" | "HEAD" => {
+            let range = req.headers().get(header::RANGE);
+            handle_get(&user, &path, files, method.as_str() == "HEAD", range).await
+        }
         "PUT" => handle_put(req, &user, &path, files).await,
         "MKCOL" => handle_mkcol(&user, &path, files).await,
         "DELETE" => handle_delete(&user, &path, files).await,
@@ -239,16 +242,58 @@ async fn handle_get(
     path: &str,
     files: Arc<FileService>,
     is_head: bool,
+    range_header: Option<&header::HeaderValue>,
 ) -> Result<WebDavResponse, BoxError> {
     match files.stat(user, "/", path).await {
         Ok(Some((size, is_dir, _))) => {
             if is_dir {
-                // For directories, we could return a simple HTML listing or just 200 OK
                 let mut res = Response::new(Full::new(Bytes::from("Directory")));
                 if is_head {
                     *res.body_mut() = Full::new(Bytes::new());
                 }
                 return Ok(res);
+            }
+
+            if let Some(range_val) = range_header {
+                if let Ok(range_str) = range_val.to_str() {
+                    if let Some(range) = parse_range(range_str, size) {
+                        match files.get_reader(user, "/", path).await {
+                            Ok(mut file) => {
+                                use tokio::io::AsyncSeekExt;
+                                if let Err(_) = file.seek(std::io::SeekFrom::Start(range.start)).await {
+                                    let mut res = Response::new(Full::new(Bytes::from("Requested Range Not Satisfiable")));
+                                    *res.status_mut() = StatusCode::REQUESTED_RANGE_NOT_SATISFIABLE;
+                                    return Ok(res);
+                                }
+
+                                let part_size = (range.end - range.start) + 1;
+                                let mut buffer = vec![0u8; part_size as usize];
+                                use tokio::io::AsyncReadExt;
+                                if let Ok(_) = file.read_exact(&mut buffer).await {
+                                    let mut res = Response::new(Full::new(Bytes::from(buffer)));
+                                    *res.status_mut() = StatusCode::PARTIAL_CONTENT;
+                                    res.headers_mut().insert(
+                                        header::CONTENT_RANGE,
+                                        header::HeaderValue::from_str(&format!(
+                                            "bytes {}-{}/{}",
+                                            range.start, range.end, size
+                                        ))?,
+                                    );
+                                    res.headers_mut().insert(
+                                        header::CONTENT_LENGTH,
+                                        header::HeaderValue::from(part_size),
+                                    );
+                                    res.headers_mut().insert(
+                                        header::ACCEPT_RANGES,
+                                        header::HeaderValue::from_static("bytes"),
+                                    );
+                                    return Ok(res);
+                                }
+                            }
+                            Err(_) => {}
+                        }
+                    }
+                }
             }
 
             match files.download(user, "/", path).await {
@@ -262,7 +307,10 @@ async fn handle_get(
                         header::CONTENT_LENGTH,
                         header::HeaderValue::from(size),
                     );
-                    // Add content type if possible
+                    res.headers_mut().insert(
+                        header::ACCEPT_RANGES,
+                        header::HeaderValue::from_static("bytes"),
+                    );
                     Ok(res)
                 }
                 Err(DomainError::FileNotFound) => {
@@ -283,6 +331,34 @@ async fn handle_get(
             Ok(res)
         }
     }
+}
+
+struct Range {
+    start: u64,
+    end: u64,
+}
+
+fn parse_range(s: &str, size: u64) -> Option<Range> {
+    if !s.starts_with("bytes=") {
+        return None;
+    }
+    let r = s.strip_prefix("bytes=")?;
+    let mut parts = r.split('-');
+    let start_str = parts.next()?;
+    let end_str = parts.next()?;
+
+    let start = start_str.parse::<u64>().ok()?;
+    let end = if end_str.is_empty() {
+        size - 1
+    } else {
+        end_str.parse::<u64>().ok()?
+    };
+
+    if start >= size || end >= size || start > end {
+        return None;
+    }
+
+    Some(Range { start, end })
 }
 
 async fn handle_put(

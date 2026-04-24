@@ -30,4 +30,10 @@ pub trait IFileRepository: Send + Sync {
     ) -> Result<Vec<(String, bool)>, DomainError>;
 
     async fn get_metadata(&self, username: &str, rel_path: &str) -> Option<FileMetadata>;
+
+    async fn get_reader(
+        &self,
+        username: &str,
+        rel_path: &str,
+    ) -> Result<tokio::fs::File, DomainError>;
 }

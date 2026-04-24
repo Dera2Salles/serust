@@ -7,6 +7,7 @@ use crate::user::domain::User;
 use std::sync::Arc;
 
 pub struct FileService {
+    file_repo: Arc<dyn IFileRepository>,
     download: Arc<DownloadUseCase>,
     upload: Arc<UploadUseCase>,
     list: Arc<ListUseCase>,
@@ -22,6 +23,7 @@ pub struct FileService {
 
 impl FileService {
     pub fn new(
+        file_repo: Arc<dyn IFileRepository>,
         download: Arc<DownloadUseCase>,
         upload: Arc<UploadUseCase>,
         list: Arc<ListUseCase>,
@@ -35,6 +37,7 @@ impl FileService {
         purge: Arc<PurgeUseCase>,
     ) -> Self {
         Self {
+            file_repo,
             download,
             upload,
             list,
@@ -114,5 +117,21 @@ impl FileService {
 
     pub async fn purge(&self, user: &User) -> Result<(), DomainError> {
         self.purge.execute(user).await
+    }
+
+    pub async fn get_reader(
+        &self,
+        user: &User,
+        cwd: &str,
+        filename: &str,
+    ) -> Result<tokio::fs::File, DomainError> {
+        let resolved = crate::common::permission::PermissionChecker::resolve_path(cwd, filename);
+        if !crate::common::permission::PermissionChecker::is_safe_path(&resolved) {
+            return Err(DomainError::UnsafePath);
+        }
+
+        // For now, only allowing owner to get reader directly. 
+        // Shared files would need more logic similar to DownloadUseCase.
+        self.file_repo.get_reader(&user.username, &resolved).await
     }
 }

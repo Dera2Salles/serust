@@ -155,6 +155,7 @@ pub async fn setup_injection() -> Result<Services> {
     ));
 
     let file_service = Arc::new(FileService::new(
+        Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
         download_usecase,
         upload_usecase,
         list_usecase,
