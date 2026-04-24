@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { AdminDashboard } from './components/AdminDashboard';
 import { UserManagement } from './components/UserManagement';
 import { FileExplorer } from './components/FileExplorer';
-import { LayoutDashboard, Users, FolderTree, Settings, Menu } from 'lucide-react';
+import { LayoutDashboard, Users, FolderTree, Settings, Activity, Share2, ScrollText } from 'lucide-react';
 import { cn } from './components/OneUI';
 
 function App() {
@@ -11,7 +11,10 @@ function App() {
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'users', label: 'Users', icon: Users },
+    { id: 'sessions', label: 'Connections', icon: Activity },
+    { id: 'shares', label: 'Shares', icon: Share2 },
     { id: 'files', label: 'Files', icon: FolderTree },
+    { id: 'logs', label: 'Server Logs', icon: ScrollText },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
@@ -66,6 +69,24 @@ function App() {
           {activeTab === 'dashboard' && <AdminDashboard />}
           {activeTab === 'users' && <UserManagement />}
           {activeTab === 'files' && <FileExplorer />}
+          {activeTab === 'sessions' && (
+            <div className="p-12 text-center text-subtext0">
+              <Activity size={48} className="mx-auto mb-4 opacity-20" />
+              <h3 className="text-xl">Active Connections monitoring coming soon</h3>
+            </div>
+          )}
+          {activeTab === 'shares' && (
+            <div className="p-12 text-center text-subtext0">
+              <Share2 size={48} className="mx-auto mb-4 opacity-20" />
+              <h3 className="text-xl">Global Share management coming soon</h3>
+            </div>
+          )}
+          {activeTab === 'logs' && (
+            <div className="p-12 text-center text-subtext0">
+              <ScrollText size={48} className="mx-auto mb-4 opacity-20" />
+              <h3 className="text-xl">Live Server Logs coming soon</h3>
+            </div>
+          )}
           {activeTab === 'settings' && (
             <div className="flex flex-col items-center justify-center h-full text-center p-12">
               <div className="w-24 h-24 bg-surface0 rounded-[32px] flex items-center justify-center mb-8 border border-surface1">
