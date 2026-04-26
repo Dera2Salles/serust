@@ -1,12 +1,17 @@
 use crate::common::error::DomainError;
+use crate::file::compression_service::{CompressionFormat, CompressionService};
+use crate::file::git_service::GitService;
+use crate::file::interfaces::IFileRepository;
 use crate::file::{
     DeleteUseCase, DirExistsUseCase, DownloadUseCase, ListUseCase, MkdirUseCase, PurgeUseCase,
     RemoveDirUseCase, RenameUseCase, RestoreUseCase, StatUseCase, UploadUseCase,
 };
 use crate::user::domain::User;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 pub struct FileService {
+    storage_root: PathBuf,
     file_repo: Arc<dyn IFileRepository>,
     download: Arc<DownloadUseCase>,
     upload: Arc<UploadUseCase>,
@@ -19,10 +24,13 @@ pub struct FileService {
     dir_exists: Arc<DirExistsUseCase>,
     restore: Arc<RestoreUseCase>,
     purge: Arc<PurgeUseCase>,
+    pub git: Arc<GitService>,
+    pub compression: Arc<CompressionService>,
 }
 
 impl FileService {
     pub fn new(
+        storage_root: PathBuf,
         file_repo: Arc<dyn IFileRepository>,
         download: Arc<DownloadUseCase>,
         upload: Arc<UploadUseCase>,
@@ -35,8 +43,11 @@ impl FileService {
         dir_exists: Arc<DirExistsUseCase>,
         restore: Arc<RestoreUseCase>,
         purge: Arc<PurgeUseCase>,
+        git: Arc<GitService>,
+        compression: Arc<CompressionService>,
     ) -> Self {
         Self {
+            storage_root,
             file_repo,
             download,
             upload,
@@ -49,7 +60,64 @@ impl FileService {
             dir_exists,
             restore,
             purge,
+            git,
+            compression,
         }
+    }
+
+    fn user_path(&self, username: &str) -> PathBuf {
+        self.storage_root.join(username)
+    }
+
+    pub async fn git_history(
+        &self,
+        user: &User,
+        cwd: &str,
+        filename: &str,
+    ) -> Result<Vec<(String, i64, String)>, DomainError> {
+        let resolved = crate::common::permission::PermissionChecker::resolve_path(cwd, filename);
+        let user_path = self.user_path(&user.username);
+        self.git.get_history(&user_path, &resolved)
+    }
+
+    pub async fn git_restore(
+        &self,
+        user: &User,
+        cwd: &str,
+        filename: &str,
+        hash: &str,
+    ) -> Result<(), DomainError> {
+        let resolved = crate::common::permission::PermissionChecker::resolve_path(cwd, filename);
+        let user_path = self.user_path(&user.username);
+        self.git.restore_version(&user_path, &resolved, hash)
+    }
+
+    pub async fn compress(
+        &self,
+        user: &User,
+        cwd: &str,
+        filename: &str,
+        format_str: &str,
+    ) -> Result<String, DomainError> {
+        let resolved = crate::common::permission::PermissionChecker::resolve_path(cwd, filename);
+        let format = match format_str.to_uppercase().as_str() {
+            "ZIP" => CompressionFormat::Zip,
+            "TAR.GZ" | "TGZ" => CompressionFormat::TarGz,
+            _ => return Err(DomainError::Internal("Unsupported format".into())),
+        };
+        let user_path = self.user_path(&user.username);
+        self.compression.compress(&user_path, &resolved, format)
+    }
+
+    pub async fn decompress(
+        &self,
+        user: &User,
+        cwd: &str,
+        filename: &str,
+    ) -> Result<(), DomainError> {
+        let resolved = crate::common::permission::PermissionChecker::resolve_path(cwd, filename);
+        let user_path = self.user_path(&user.username);
+        self.compression.decompress(&user_path, &resolved)
     }
 
     pub async fn download(

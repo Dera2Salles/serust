@@ -214,6 +214,60 @@ impl McpRegistry {
                     "required": ["username", "is_active"]
                 }),
             },
+            McpTool {
+                name: "list_file_versions".into(),
+                description: "List all Git versions (commits) for a specific file.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "username": { "type": "string", "description": "Authenticated username" },
+                        "path": { "type": "string", "description": "Directory containing the file" },
+                        "filename": { "type": "string", "description": "Name of the file" }
+                    },
+                    "required": ["username", "path", "filename"]
+                }),
+            },
+            McpTool {
+                name: "restore_file_version".into(),
+                description: "Restore a file to a specific previous version using its commit hash.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "username": { "type": "string", "description": "Authenticated username" },
+                        "path": { "type": "string", "description": "Directory containing the file" },
+                        "filename": { "type": "string", "description": "Name of the file" },
+                        "commit_hash": { "type": "string", "description": "The hash of the commit to restore" }
+                    },
+                    "required": ["username", "path", "filename", "commit_hash"]
+                }),
+            },
+            McpTool {
+                name: "compress_file".into(),
+                description: "Compress a file or folder into a ZIP or TAR.GZ archive.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "username": { "type": "string", "description": "Authenticated username" },
+                        "path": { "type": "string", "description": "Parent directory" },
+                        "filename": { "type": "string", "description": "File or folder to compress" },
+                        "format": { "type": "string", "enum": ["ZIP", "TAR.GZ"], "description": "Archive format" }
+                    },
+                    "required": ["username", "path", "filename", "format"]
+                }),
+            },
+            McpTool {
+                name: "decompress_file".into(),
+                description: "Decompress an archive (ZIP, RAR, TAR.GZ) on the server.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "username": { "type": "string", "description": "Authenticated username" },
+                        "path": { "type": "string", "description": "Directory containing the archive" },
+                        "filename": { "type": "string", "description": "Name of the archive file" }
+                    },
+                    "required": ["username", "path", "filename"]
+                }),
+            },
         ]
     }
 
@@ -229,6 +283,10 @@ impl McpRegistry {
             "rename_file" => self.tool_rename_file(args).await,
             "move_file" => self.tool_move_file(args).await,
             "read_file" => self.tool_read_file(args).await,
+            "list_file_versions" => self.tool_list_file_versions(args).await,
+            "restore_file_version" => self.tool_restore_file_version(args).await,
+            "compress_file" => self.tool_compress_file(args).await,
+            "decompress_file" => self.tool_decompress_file(args).await,
             "search_users" => self.tool_search_users(args).await,
             "create_share_grant" => self.tool_create_share_grant(args).await,
             "list_outgoing_shares" => self.tool_list_outgoing_shares(args).await,
@@ -860,6 +918,104 @@ impl McpRegistry {
             }
             Ok(None) => McpToolResult::error("User not found."),
             Err(e) => McpToolResult::error(format!("Database error: {}", e)),
+        }
+    }
+
+    async fn tool_list_file_versions(&self, args: &Value) -> McpToolResult {
+        let username = match Self::get_str(args, "username") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let path = match Self::get_str(args, "path") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let filename = match Self::get_str(args, "filename") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+
+        let user = Self::make_user(username);
+        match self.file_service.git_history(&user, path, filename).await {
+            Ok(history) => {
+                let lines: Vec<String> = history
+                    .into_iter()
+                    .map(|(hash, date, msg)| format!("- {} ({}) : {}", &hash[..8], date, msg))
+                    .collect();
+                McpToolResult::success(format!("Versions for '{}':\n{}", filename, lines.join("\n")))
+            }
+            Err(e) => McpToolResult::error(format!("Error: {}", e)),
+        }
+    }
+
+    async fn tool_restore_file_version(&self, args: &Value) -> McpToolResult {
+        let username = match Self::get_str(args, "username") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let path = match Self::get_str(args, "path") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let filename = match Self::get_str(args, "filename") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let hash = match Self::get_str(args, "commit_hash") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+
+        let user = Self::make_user(username);
+        match self.file_service.git_restore(&user, path, filename, hash).await {
+            Ok(_) => McpToolResult::success(format!("File '{}' restored to version {}.", filename, &hash[..8])),
+            Err(e) => McpToolResult::error(format!("Error: {}", e)),
+        }
+    }
+
+    async fn tool_compress_file(&self, args: &Value) -> McpToolResult {
+        let username = match Self::get_str(args, "username") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let path = match Self::get_str(args, "path") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let filename = match Self::get_str(args, "filename") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let format = match Self::get_str(args, "format") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+
+        let user = Self::make_user(username);
+        match self.file_service.compress(&user, path, filename, format).await {
+            Ok(archive_name) => McpToolResult::success(format!("Successfully created archive: {}", archive_name)),
+            Err(e) => McpToolResult::error(format!("Error: {}", e)),
+        }
+    }
+
+    async fn tool_decompress_file(&self, args: &Value) -> McpToolResult {
+        let username = match Self::get_str(args, "username") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let path = match Self::get_str(args, "path") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let filename = match Self::get_str(args, "filename") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+
+        let user = Self::make_user(username);
+        match self.file_service.decompress(&user, path, filename).await {
+            Ok(_) => McpToolResult::success(format!("Successfully decompressed: {}", filename)),
+            Err(e) => McpToolResult::error(format!("Error: {}", e)),
         }
     }
 }

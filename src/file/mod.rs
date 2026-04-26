@@ -1,7 +1,9 @@
+pub mod compression_service;
 pub mod delete_usecases;
 pub mod dir_exists_usecase;
 pub mod domain;
 pub mod download_usecase;
+pub mod git_service;
 pub mod interfaces;
 pub mod list_usecases;
 pub mod local_repository;

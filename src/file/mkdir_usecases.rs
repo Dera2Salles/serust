@@ -3,30 +3,38 @@ use crate::common::permission::{Permission, PermissionChecker};
 use crate::database::domain::DbFileMetadata;
 use crate::database::file_usecases::CreateFileUseCase;
 use crate::database::user_usecases::FindUserUseCase;
+use crate::file::git_service::GitService;
 use crate::file::interfaces::IFileRepository;
 use crate::share::service::ShareService;
 use crate::user::domain::User;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 pub struct MkdirUseCase {
+    storage_root: PathBuf,
     file_repo: Arc<dyn IFileRepository>,
     shares: Arc<ShareService>,
     create_db_file: Arc<CreateFileUseCase>,
     find_db_user: Arc<FindUserUseCase>,
+    git_service: Arc<GitService>,
 }
 
 impl MkdirUseCase {
     pub fn new(
+        storage_root: PathBuf,
         file_repo: Arc<dyn IFileRepository>,
         shares: Arc<ShareService>,
         create_db_file: Arc<CreateFileUseCase>,
         find_db_user: Arc<FindUserUseCase>,
+        git_service: Arc<GitService>,
     ) -> Self {
         Self {
+            storage_root,
             file_repo,
             shares,
             create_db_file,
             find_db_user,
+            git_service,
         }
     }
 
@@ -68,7 +76,12 @@ impl MkdirUseCase {
             self.shares
                 .consume_write(&user.username, &owner, &inner)
                 .await?;
-            return self.file_repo.create_dir(&owner, &inner).await;
+            let res = self.file_repo.create_dir(&owner, &inner).await;
+            if res.is_ok() {
+                let user_path = self.storage_root.join(&owner);
+                let _ = self.git_service.commit_file(&user_path, &inner, &format!("Created folder (shared): {}", inner));
+            }
+            return res;
         }
 
         if let Some(existing) = self.file_repo.get_metadata(&user.username, &resolved).await {
@@ -78,6 +91,10 @@ impl MkdirUseCase {
         }
 
         self.file_repo.create_dir(&user.username, &resolved).await?;
+
+        // Git commit
+        let user_path = self.storage_root.join(&user.username);
+        let _ = self.git_service.commit_file(&user_path, &resolved, &format!("Created folder: {}", dirname));
 
         let owner_id = self.get_user_id(&user.username).await?;
         let db_entry = DbFileMetadata {

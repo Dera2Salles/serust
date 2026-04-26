@@ -4,6 +4,7 @@ use crate::database::domain::DbFileMetadata;
 use crate::database::file_usecases::{CreateFileUseCase, FindFileByPathUseCase, UpdateFileUseCase};
 use crate::database::user_usecases::FindUserUseCase;
 use crate::file::domain::FileMetadata;
+use crate::file::git_service::GitService;
 use crate::file::interfaces::IFileRepository;
 use crate::share::service::ShareService;
 use crate::user::domain::User;
@@ -11,35 +12,42 @@ use flate2::write::GzEncoder;
 use flate2::Compression;
 use sha2::{Digest, Sha256};
 use std::io::Write;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024;
 
 pub struct UploadUseCase {
+    storage_root: PathBuf,
     file_repo: Arc<dyn IFileRepository>,
     shares: Arc<ShareService>,
     create_db_file: Arc<CreateFileUseCase>,
     update_db_file: Arc<UpdateFileUseCase>,
     find_db_file: Arc<FindFileByPathUseCase>,
     find_db_user: Arc<FindUserUseCase>,
+    git_service: Arc<GitService>,
 }
 
 impl UploadUseCase {
     pub fn new(
+        storage_root: PathBuf,
         file_repo: Arc<dyn IFileRepository>,
         shares: Arc<ShareService>,
         create_db_file: Arc<CreateFileUseCase>,
         update_db_file: Arc<UpdateFileUseCase>,
         find_db_file: Arc<FindFileByPathUseCase>,
         find_db_user: Arc<FindUserUseCase>,
+        git_service: Arc<GitService>,
     ) -> Self {
         Self {
+            storage_root,
             file_repo,
             shares,
             create_db_file,
             update_db_file,
             find_db_file,
             find_db_user,
+            git_service,
         }
     }
 
@@ -120,6 +128,10 @@ impl UploadUseCase {
 
         let meta = FileMetadata::new(&resolved, final_data.len() as u64, &user.username);
         self.file_repo.store(meta, final_data).await?;
+
+        // Git commit
+        let user_path = self.storage_root.join(&user.username);
+        let _ = self.git_service.commit_file(&user_path, &resolved, &format!("Uploaded file: {}", filename));
 
         let owner_id = self.get_user_id(&user.username).await?;
         let storage_path = format!("/{}", resolved);

@@ -262,7 +262,7 @@ async fn handle_get(
                                 use tokio::io::AsyncSeekExt;
                                 if let Err(_) = file.seek(std::io::SeekFrom::Start(range.start)).await {
                                     let mut res = Response::new(Full::new(Bytes::from("Requested Range Not Satisfiable")));
-                                    *res.status_mut() = StatusCode::REQUESTED_RANGE_NOT_SATISFIABLE;
+                                    *res.status_mut() = StatusCode::RANGE_NOT_SATISFIABLE;
                                     return Ok(res);
                                 }
 

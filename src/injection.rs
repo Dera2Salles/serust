@@ -17,6 +17,8 @@ use crate::database::{
     user_usecases::{CreateUserUseCase, FindUserUseCase},
     Database,
 };
+use crate::file::compression_service::CompressionService;
+use crate::file::git_service::GitService;
 use crate::file::interfaces::IFileRepository;
 use crate::file::local_repository::FileRepository;
 use crate::file::service::FileService;
@@ -24,6 +26,7 @@ use crate::share::local_repository::ShareRepository;
 use crate::share::service::ShareService;
 use crate::user::service::AuthService;
 use anyhow::Result;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::info;
 
@@ -35,7 +38,8 @@ pub struct Services {
 }
 
 pub async fn setup_injection() -> Result<Services> {
-    let file_repo = Arc::new(FileRepository::new("storage"));
+    let storage_root = PathBuf::from("storage");
+    let file_repo = Arc::new(FileRepository::new(storage_root.clone()));
     let share_repo = Arc::new(ShareRepository::new("shares.json").await);
 
     info!("Initialisation de la base de données SQLite...");
@@ -47,49 +51,46 @@ pub async fn setup_injection() -> Result<Services> {
     let db_log_repo = DbAccessLogRepository::new(db.clone());
 
     let create_user_usecase = Arc::new(CreateUserUseCase::new(
-        Arc::clone(&db_user_repo) as Arc<dyn IUserRepository>
+        Arc::clone(&db_user_repo) as Arc<dyn IUserRepository>,
     ));
     let find_user_usecase = Arc::new(FindUserUseCase::new(
-        Arc::clone(&db_user_repo) as Arc<dyn IUserRepository>
+        Arc::clone(&db_user_repo) as Arc<dyn IUserRepository>,
     ));
     let create_file_usecase = Arc::new(CreateFileUseCase::new(
-        Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>
+        Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>,
     ));
     let find_file_usecase = Arc::new(FindFileUseCase::new(
-        Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>
+        Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>,
     ));
     let update_file_usecase = Arc::new(UpdateFileUseCase::new(
-        Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>
+        Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>,
     ));
     let find_file_by_path_usecase = Arc::new(FindFileByPathUseCase::new(
-        Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>
+        Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>,
     ));
     let rename_db_file_usecase = Arc::new(RenameFileDbUseCase::new(
-        Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>
+        Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>,
     ));
-    let soft_delete_db_file_usecase = Arc::new(SoftDeleteFileDbUseCase::new(Arc::clone(
-        &db_file_repo,
-    )
-        as Arc<dyn IFileDatabaseRepository>));
+    let soft_delete_db_file_usecase = Arc::new(SoftDeleteFileDbUseCase::new(
+        Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>,
+    ));
     let restore_db_file_usecase = Arc::new(RestoreFileDbUseCase::new(
-        Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>
+        Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>,
     ));
-    let find_deleted_files_db_usecase = Arc::new(FindDeletedFilesDbUseCase::new(Arc::clone(
-        &db_file_repo,
-    )
-        as Arc<dyn IFileDatabaseRepository>));
-    let permanent_delete_db_file_usecase = Arc::new(PermanentDeleteFileDbUseCase::new(Arc::clone(
-        &db_file_repo,
-    )
-        as Arc<dyn IFileDatabaseRepository>));
+    let find_deleted_files_db_usecase = Arc::new(FindDeletedFilesDbUseCase::new(
+        Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>,
+    ));
+    let permanent_delete_db_file_usecase = Arc::new(PermanentDeleteFileDbUseCase::new(
+        Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>,
+    ));
     let create_link_usecase = Arc::new(CreateLinkUseCase::new(
-        Arc::new(db_share_repo.clone()) as Arc<dyn IShareDatabaseRepository>
+        Arc::new(db_share_repo.clone()) as Arc<dyn IShareDatabaseRepository>,
     ));
     let create_grant_usecase = Arc::new(CreateGrantUseCase::new(
-        Arc::new(db_share_repo.clone()) as Arc<dyn IShareDatabaseRepository>
+        Arc::new(db_share_repo.clone()) as Arc<dyn IShareDatabaseRepository>,
     ));
     let log_access_usecase = Arc::new(LogAccessUseCase::new(
-        Arc::new(db_log_repo.clone()) as Arc<dyn IAccessLogRepository>
+        Arc::new(db_log_repo.clone()) as Arc<dyn IAccessLogRepository>,
     ));
 
     let auth_service = Arc::new(AuthService::new(
@@ -98,17 +99,22 @@ pub async fn setup_injection() -> Result<Services> {
     ));
     let share_service = Arc::new(ShareService::new(Arc::clone(&share_repo)));
 
+    let git_service = Arc::new(GitService::new());
+    let compression_service = Arc::new(CompressionService::new());
+
     let download_usecase = Arc::new(crate::file::DownloadUseCase::new(
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
         Arc::clone(&share_service),
     ));
     let upload_usecase = Arc::new(crate::file::UploadUseCase::new(
+        storage_root.clone(),
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
         Arc::clone(&share_service),
         Arc::clone(&create_file_usecase),
         Arc::clone(&update_file_usecase),
         Arc::clone(&find_file_by_path_usecase),
         Arc::clone(&find_user_usecase),
+        Arc::clone(&git_service),
     ));
     let list_usecase = Arc::new(crate::file::ListUseCase::new(
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
@@ -116,16 +122,20 @@ pub async fn setup_injection() -> Result<Services> {
         Arc::clone(&find_file_by_path_usecase),
     ));
     let mkdir_usecase = Arc::new(crate::file::MkdirUseCase::new(
+        storage_root.clone(),
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
         Arc::clone(&share_service),
         Arc::clone(&create_file_usecase),
         Arc::clone(&find_user_usecase),
+        Arc::clone(&git_service),
     ));
     let delete_usecase = Arc::new(crate::file::DeleteUseCase::new(
+        storage_root.clone(),
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
         Arc::clone(&share_service),
         Arc::clone(&find_file_by_path_usecase),
         Arc::clone(&soft_delete_db_file_usecase),
+        Arc::clone(&git_service),
     ));
     let stat_usecase = Arc::new(crate::file::StatUseCase::new(
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
@@ -133,19 +143,25 @@ pub async fn setup_injection() -> Result<Services> {
         Arc::clone(&find_file_by_path_usecase),
     ));
     let rename_usecase = Arc::new(crate::file::RenameUseCase::new(
+        storage_root.clone(),
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
         Arc::clone(&find_file_by_path_usecase),
         Arc::clone(&rename_db_file_usecase),
+        Arc::clone(&git_service),
     ));
     let rmdir_usecase = Arc::new(crate::file::RemoveDirUseCase::new(
-        Arc::clone(&file_repo) as Arc<dyn IFileRepository>
+        storage_root.clone(),
+        Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
+        Arc::clone(&git_service),
     ));
     let dir_exists_usecase = Arc::new(crate::file::DirExistsUseCase::new(
-        Arc::clone(&file_repo) as Arc<dyn IFileRepository>
+        Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
     ));
     let restore_usecase = Arc::new(crate::file::RestoreUseCase::new(
+        storage_root.clone(),
         Arc::clone(&find_file_by_path_usecase),
         Arc::clone(&restore_db_file_usecase),
+        Arc::clone(&git_service),
     ));
     let purge_usecase = Arc::new(crate::file::PurgeUseCase::new(
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
@@ -155,6 +171,7 @@ pub async fn setup_injection() -> Result<Services> {
     ));
 
     let file_service = Arc::new(FileService::new(
+        storage_root,
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
         download_usecase,
         upload_usecase,
@@ -167,6 +184,8 @@ pub async fn setup_injection() -> Result<Services> {
         dir_exists_usecase,
         restore_usecase,
         purge_usecase,
+        git_service,
+        compression_service,
     ));
 
     for (name, pass) in [

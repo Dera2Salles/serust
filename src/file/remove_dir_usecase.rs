@@ -1,16 +1,28 @@
 use crate::common::error::DomainError;
 use crate::common::permission::{Permission, PermissionChecker};
+use crate::file::git_service::GitService;
 use crate::file::interfaces::IFileRepository;
 use crate::user::domain::User;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 pub struct RemoveDirUseCase {
+    storage_root: PathBuf,
     file_repo: Arc<dyn IFileRepository>,
+    git_service: Arc<GitService>,
 }
 
 impl RemoveDirUseCase {
-    pub fn new(file_repo: Arc<dyn IFileRepository>) -> Self {
-        Self { file_repo }
+    pub fn new(
+        storage_root: PathBuf,
+        file_repo: Arc<dyn IFileRepository>,
+        git_service: Arc<GitService>,
+    ) -> Self {
+        Self {
+            storage_root,
+            file_repo,
+            git_service,
+        }
     }
 
     pub async fn execute(&self, user: &User, cwd: &str, dirname: &str) -> Result<(), DomainError> {
@@ -31,6 +43,10 @@ impl RemoveDirUseCase {
         } else {
             return Err(DomainError::FileNotFound);
         }
+
+        // Git commit before deletion
+        let user_path = self.storage_root.join(&user.username);
+        let _ = self.git_service.commit_file(&user_path, &resolved, &format!("Removing directory: {}", dirname));
 
         self.file_repo.remove_dir(&user.username, &resolved).await
     }
