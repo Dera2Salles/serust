@@ -68,7 +68,6 @@ impl RenameUseCase {
             .rename(&user.username, &old_resolved, &new_resolved)
             .await?;
 
-        // Git commit - track the removal of the old file and addition of the new one
         let user_path = self.storage_root.join(&user.username);
         let _ = self.git_service.commit_file(&user_path, &old_resolved, &format!("Renamed file (old): {}", old_name));
         let _ = self.git_service.commit_file(&user_path, &new_resolved, &format!("Renamed file (new): {}", new_name));

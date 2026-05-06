@@ -92,7 +92,6 @@ impl MkdirUseCase {
 
         self.file_repo.create_dir(&user.username, &resolved).await?;
 
-        // Git commit
         let user_path = self.storage_root.join(&user.username);
         let _ = self.git_service.commit_file(&user_path, &resolved, &format!("Created folder: {}", dirname));
 

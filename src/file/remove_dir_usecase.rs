@@ -44,7 +44,6 @@ impl RemoveDirUseCase {
             return Err(DomainError::FileNotFound);
         }
 
-        // Git commit before deletion
         let user_path = self.storage_root.join(&user.username);
         let _ = self.git_service.commit_file(&user_path, &resolved, &format!("Removing directory: {}", dirname));
 

@@ -242,6 +242,20 @@ impl McpRegistry {
                 }),
             },
             McpTool {
+                name: "get_file_diff".into(),
+                description: "Get the unified diff for a file compared to a specific previous commit hash.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "username": { "type": "string", "description": "Authenticated username" },
+                        "path": { "type": "string", "description": "Directory containing the file" },
+                        "filename": { "type": "string", "description": "Name of the file" },
+                        "commit_hash": { "type": "string", "description": "The hash of the commit to compare against" }
+                    },
+                    "required": ["username", "path", "filename", "commit_hash"]
+                }),
+            },
+            McpTool {
                 name: "compress_file".into(),
                 description: "Compress a file or folder into a ZIP or TAR.GZ archive.".into(),
                 input_schema: json!({
@@ -285,6 +299,7 @@ impl McpRegistry {
             "read_file" => self.tool_read_file(args).await,
             "list_file_versions" => self.tool_list_file_versions(args).await,
             "restore_file_version" => self.tool_restore_file_version(args).await,
+            "get_file_diff" => self.tool_get_file_diff(args).await,
             "compress_file" => self.tool_compress_file(args).await,
             "decompress_file" => self.tool_decompress_file(args).await,
             "search_users" => self.tool_search_users(args).await,
@@ -969,6 +984,31 @@ impl McpRegistry {
         let user = Self::make_user(username);
         match self.file_service.git_restore(&user, path, filename, hash).await {
             Ok(_) => McpToolResult::success(format!("File '{}' restored to version {}.", filename, &hash[..8])),
+            Err(e) => McpToolResult::error(format!("Error: {}", e)),
+        }
+    }
+
+    async fn tool_get_file_diff(&self, args: &Value) -> McpToolResult {
+        let username = match Self::get_str(args, "username") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let path = match Self::get_str(args, "path") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let filename = match Self::get_str(args, "filename") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let hash = match Self::get_str(args, "commit_hash") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+
+        let user = Self::make_user(username);
+        match self.file_service.git_diff(&user, path, filename, hash).await {
+            Ok(diff) => McpToolResult::success(format!("Diff for '{}' against {}:\n{}", filename, &hash[..8], diff)),
             Err(e) => McpToolResult::error(format!("Error: {}", e)),
         }
     }

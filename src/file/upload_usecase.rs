@@ -129,7 +129,6 @@ impl UploadUseCase {
         let meta = FileMetadata::new(&resolved, final_data.len() as u64, &user.username);
         self.file_repo.store(meta, final_data).await?;
 
-        // Git commit
         let user_path = self.storage_root.join(&user.username);
         let _ = self.git_service.commit_file(&user_path, &resolved, &format!("Uploaded file: {}", filename));
 

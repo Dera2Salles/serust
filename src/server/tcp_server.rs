@@ -7,7 +7,7 @@ use crate::server::handlers::info::{
 };
 use crate::server::handlers::network::{PasvHandler, PortHandler};
 use crate::server::handlers::compression::{CompressHandler, DecompressHandler};
-use crate::server::handlers::git::{GitHistoryHandler, GitRestoreHandler};
+use crate::server::handlers::git::{GitDiffHandler, GitHistoryHandler, GitRestoreHandler};
 use crate::server::handlers::share::{ShareHandler, SharesHandler, UnshareHandler};
 use crate::server::handlers::transfer::{
     DeleHandler, ListDirHandler, MkdHandler, NlstHandler, PurgHandler, RetrHandler, RmdHandler,
@@ -72,6 +72,7 @@ impl TcpServer {
             .route(SizeHandler::new(Arc::clone(&file_service)))
             .route(GitHistoryHandler::new(Arc::clone(&file_service)))
             .route(GitRestoreHandler::new(Arc::clone(&file_service)))
+            .route(GitDiffHandler::new(Arc::clone(&file_service)))
             .route(CompressHandler::new(Arc::clone(&file_service)))
             .route(DecompressHandler::new(Arc::clone(&file_service)))
             .route(ShareHandler::new(Arc::clone(&share_service)))

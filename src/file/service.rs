@@ -92,6 +92,18 @@ impl FileService {
         self.git.restore_version(&user_path, &resolved, hash)
     }
 
+    pub async fn git_diff(
+        &self,
+        user: &User,
+        cwd: &str,
+        filename: &str,
+        hash: &str,
+    ) -> Result<String, DomainError> {
+        let resolved = crate::common::permission::PermissionChecker::resolve_path(cwd, filename);
+        let user_path = self.user_path(&user.username);
+        self.git.get_diff(&user_path, &resolved, hash)
+    }
+
     pub async fn compress(
         &self,
         user: &User,
@@ -199,7 +211,6 @@ impl FileService {
         }
 
         // For now, only allowing owner to get reader directly. 
-        // Shared files would need more logic similar to DownloadUseCase.
         self.file_repo.get_reader(&user.username, &resolved).await
     }
 }

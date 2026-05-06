@@ -78,7 +78,6 @@ impl GitService {
             let oid = oid_result.map_err(|e| DomainError::Internal(e.to_string()))?;
             let commit = repo.find_commit(oid).map_err(|e| DomainError::Internal(e.to_string()))?;
             
-            // Check if this commit affected the file
             if self.commit_affected_path(&repo, &commit, rel_path)? {
                 history.push((
                     oid.to_string(),
@@ -100,7 +99,6 @@ impl GitService {
         let tree = commit.tree().map_err(|e| DomainError::Internal(e.to_string()))?;
         
         if commit.parent_count() == 0 {
-            // Initial commit - check if file exists in tree
             return Ok(tree.get_path(Path::new(rel_path)).is_ok());
         }
 
@@ -161,5 +159,43 @@ impl GitService {
         self.commit_file(user_path, rel_path, &format!("Restored version from {}", commit_hash))?;
         
         Ok(())
+    }
+
+    /// Generates a unified diff for a specific file against a commit hash.
+    pub fn get_diff(
+        &self,
+        user_path: &Path,
+        rel_path: &str,
+        commit_hash: &str,
+    ) -> Result<String, DomainError> {
+        let repo = self.init_repository(user_path)?;
+        let oid = Oid::from_str(commit_hash).map_err(|e| DomainError::Internal(e.to_string()))?;
+        let commit = repo.find_commit(oid).map_err(|e| DomainError::Internal(e.to_string()))?;
+        let tree = commit.tree().map_err(|e| DomainError::Internal(e.to_string()))?;
+
+        let mut opts = git2::DiffOptions::new();
+        opts.pathspec(rel_path);
+
+        let diff = repo.diff_tree_to_workdir_with_index(Some(&tree), Some(&mut opts))
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+
+        let mut diff_text = String::new();
+        diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+            let origin = line.origin();
+            let content = std::str::from_utf8(line.content()).unwrap_or("");
+            match origin {
+                ' ' | '+' | '-' => {
+                    diff_text.push(origin);
+                    diff_text.push_str(content);
+                }
+                'H' => {
+                    diff_text.push_str(content);
+                }
+                _ => {}
+            }
+            true
+        }).map_err(|e| DomainError::Internal(e.to_string()))?;
+
+        Ok(diff_text)
     }
 }

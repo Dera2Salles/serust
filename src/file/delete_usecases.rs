@@ -80,7 +80,6 @@ impl DeleteUseCase {
 
         let storage_path = format!("/{}", resolved);
         
-        // Before deleting (soft or hard), commit to git
         let user_path = self.storage_root.join(&user.username);
         let _ = self.git_service.commit_file(&user_path, &resolved, &format!("Deleting file: {}", filename));
 

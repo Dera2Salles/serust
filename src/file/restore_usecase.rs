@@ -46,7 +46,6 @@ impl RestoreUseCase {
                 .await
                 .map_err(|e| DomainError::Internal(e.to_string()))?;
             
-            // Git commit restore
             let user_path = self.storage_root.join(&user.username);
             let _ = self.git_service.commit_file(&user_path, &resolved, &format!("Restored file from recycle bin: {}", filename));
 
