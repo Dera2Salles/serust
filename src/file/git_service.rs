@@ -3,11 +3,13 @@ use git2::{Commit, Oid, Repository, Signature, Sort};
 use std::path::Path;
 use tracing::{debug, info};
 
-pub struct GitService;
+pub struct GitService {
+    pub bucket: Option<String>,
+}
 
 impl GitService {
-    pub fn new() -> Self {
-        Self
+    pub fn new(bucket: Option<String>) -> Self {
+        Self { bucket }
     }
 
     /// Initializes a Git repository in the user's storage root if it doesn't exist.
@@ -59,6 +61,12 @@ impl GitService {
         ).map_err(|e| DomainError::Internal(e.to_string()))?;
 
         debug!("Git commit successful: {} for {}", message, rel_path);
+
+        if self.bucket.is_some() {
+            // Attempt sync to S3 if bucket is configured
+            let _ = self.sync_to_s3(user_path);
+        }
+
         Ok(())
     }
 
@@ -133,6 +141,58 @@ impl GitService {
         }
 
         Ok(false)
+    }
+
+    /// Configures the S3 remote for the repository.
+    pub fn setup_s3_remote(&self, user_path: &Path, bucket: &str, username: &str) -> Result<(), DomainError> {
+        let repo = self.init_repository(user_path)?;
+        let remote_url = format!("s3://{}/git/{}", bucket, username);
+        
+        if repo.find_remote("s3").is_err() {
+            repo.remote("s3", &remote_url).map_err(|e| DomainError::Internal(e.to_string()))?;
+        }
+        Ok(())
+    }
+
+    /// Pushes local changes to the S3 remote.
+    pub fn sync_to_s3(&self, user_path: &Path) -> Result<(), DomainError> {
+        debug!("Syncing Git repository at {:?} to S3 remote", user_path);
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(user_path)
+            .arg("push")
+            .arg("s3")
+            .arg("HEAD")
+            .output()
+            .map_err(|e| DomainError::Internal(format!("Failed to execute git push: {}", e)))?;
+
+        if !output.status.success() {
+            let err = String::from_utf8_lossy(&output.stderr);
+            debug!("Git push to S3 failed: {}", err);
+            // We don't necessarily want to fail the whole operation if push fails, 
+            // but we should log it. For now, returning error to be strict.
+            return Err(DomainError::Internal(format!("Git push failed: {}", err)));
+        }
+        Ok(())
+    }
+
+    /// Pulls changes from the S3 remote.
+    pub fn sync_from_s3(&self, user_path: &Path) -> Result<(), DomainError> {
+        debug!("Syncing Git repository at {:?} from S3 remote", user_path);
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(user_path)
+            .arg("pull")
+            .arg("s3")
+            .arg("HEAD")
+            .output()
+            .map_err(|e| DomainError::Internal(format!("Failed to execute git pull: {}", e)))?;
+
+        if !output.status.success() {
+            let err = String::from_utf8_lossy(&output.stderr);
+            debug!("Git pull from S3 failed: {}", err);
+        }
+        Ok(())
     }
 
     /// Restores a file to a specific version from history.

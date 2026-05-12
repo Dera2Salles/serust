@@ -154,6 +154,37 @@ impl IFileDatabaseRepository for FileRepository {
             .await?;
         Ok(())
     }
+
+    async fn find_by_parent_path(&self, parent_path: &str) -> Result<Vec<DbFileMetadata>> {
+        let prefix = if parent_path.ends_with('/') {
+            parent_path.to_string()
+        } else {
+            format!("{}/", parent_path)
+        };
+        let pattern = format!("{}%", prefix);
+
+        // SQL query to find direct children:
+        // 1. Path must start with prefix
+        // 2. There should be no more '/' after the prefix (direct child)
+        let rows = sqlx::query(
+            "SELECT id, owner_id, filename, storage_path, size_bytes, mime_type, checksum, created_at, updated_at, is_deleted 
+             FROM files 
+             WHERE storage_path LIKE ? 
+             AND instr(substr(storage_path, length(?) + 1), '/') = 0"
+        )
+        .bind(&pattern)
+        .bind(&prefix)
+        .fetch_all(&*self.db.pool)
+        .await?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            if let Some(meta) = Self::row_to_metadata(Some(row))? {
+                results.push(meta);
+            }
+        }
+        Ok(results)
+    }
 }
 
 impl FileRepository {

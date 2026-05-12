@@ -1,0 +1,205 @@
+    Checking tcp_file_server v0.1.0 (/home/ayanokoji/Documents/Coding/arosaina/tcp_framework)
+error[E0432]: unresolved imports `crate::file::DirExistsUseCase`, `crate::file::PurgeUseCase`, `crate::file::RestoreUseCase`
+ --> src/file/service.rs:6:20
+  |
+6 |     DeleteUseCase, DirExistsUseCase, DownloadUseCase, ListUseCase, MkdirUseCase, PurgeUseCase,
+  |                    ^^^^^^^^^^^^^^^^ no `DirExistsUseCase` in `file`              ^^^^^^^^^^^^ no `PurgeUseCase` in `file`
+7 |     RemoveDirUseCase, RenameUseCase, RestoreUseCase, StatUseCase, UploadUseCase,
+  |                                      ^^^^^^^^^^^^^^
+  |                                      |
+  |                                      no `RestoreUseCase` in `file`
+  |                                      help: a similar name exists in the module: `RenameUseCase`
+
+error[E0432]: unresolved imports `crate::database::file_usecases::FindDeletedFilesDbUseCase`, `crate::database::file_usecases::PermanentDeleteFileDbUseCase`, `crate::database::file_usecases::RestoreFileDbUseCase`
+ --> src/injection.rs:6:28
+  |
+6 |         CreateFileUseCase, FindDeletedFilesDbUseCase, FindFileByPathUseCase, FindFileUseCase,
+  |                            ^^^^^^^^^^^^^^^^^^^^^^^^^ no `FindDeletedFilesDbUseCase` in `database::file_usecases`
+7 |         PermanentDeleteFileDbUseCase, RenameFileDbUseCase, RestoreFileDbUseCase,
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^                       ^^^^^^^^^^^^^^^^^^^^ no `RestoreFileDbUseCase` in `database::file_usecases`
+  |         |
+  |         no `PermanentDeleteFileDbUseCase` in `database::file_usecases`
+  |
+help: a similar name exists in the module
+  |
+6 -         CreateFileUseCase, FindDeletedFilesDbUseCase, FindFileByPathUseCase, FindFileUseCase,
+6 +         CreateFileUseCase, SoftDeleteFileDbUseCase, FindFileByPathUseCase, FindFileUseCase,
+  |
+help: a similar name exists in the module
+  |
+7 -         PermanentDeleteFileDbUseCase, RenameFileDbUseCase, RestoreFileDbUseCase,
+7 +         SoftDeleteFileDbUseCase, RenameFileDbUseCase, RestoreFileDbUseCase,
+  |
+help: a similar name exists in the module
+  |
+7 -         PermanentDeleteFileDbUseCase, RenameFileDbUseCase, RestoreFileDbUseCase,
+7 +         PermanentDeleteFileDbUseCase, RenameFileDbUseCase, RenameFileDbUseCase,
+  |
+
+error[E0433]: failed to resolve: could not find `DirExistsUseCase` in `file`
+   --> src/injection.rs:165:52
+    |
+165 |     let dir_exists_usecase = Arc::new(crate::file::DirExistsUseCase::new(
+    |                                                    ^^^^^^^^^^^^^^^^ could not find `DirExistsUseCase` in `file`
+
+error[E0433]: failed to resolve: could not find `RestoreUseCase` in `file`
+   --> src/injection.rs:168:49
+    |
+168 |     let restore_usecase = Arc::new(crate::file::RestoreUseCase::new(
+    |                                                 ^^^^^^^^^^^^^^ could not find `RestoreUseCase` in `file`
+    |
+help: a struct with a similar name exists
+    |
+168 -     let restore_usecase = Arc::new(crate::file::RestoreUseCase::new(
+168 +     let restore_usecase = Arc::new(crate::file::RenameUseCase::new(
+    |
+
+error[E0433]: failed to resolve: could not find `PurgeUseCase` in `file`
+   --> src/injection.rs:174:47
+    |
+174 |     let purge_usecase = Arc::new(crate::file::PurgeUseCase::new(
+    |                                               ^^^^^^^^^^^^ could not find `PurgeUseCase` in `file`
+
+error[E0433]: failed to resolve: could not find `framework` in the crate root
+  --> src/mcp/server.rs:25:29
+   |
+25 |     pub metrics: Arc<crate::framework::metrics::Metrics>,
+   |                             ^^^^^^^^^ could not find `framework` in the crate root
+
+error[E0433]: failed to resolve: use of undeclared type `Metrics`
+  --> src/main.rs:34:28
+   |
+34 |     let metrics = Arc::new(Metrics::new());
+   |                            ^^^^^^^ use of undeclared type `Metrics`
+   |
+help: consider importing this struct
+   |
+12 + use aws_sdk_s3::types::Metrics;
+   |
+
+warning: unused import: `AsyncSeekExt`
+ --> src/file/s3_repository.rs:8:39
+  |
+8 | use tokio::io::{AsyncRead, AsyncSeek, AsyncSeekExt};
+  |                                       ^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `ErrorKind`
+ --> src/file/s3_repository.rs:9:25
+  |
+9 | use std::io::{SeekFrom, ErrorKind};
+  |                         ^^^^^^^^^
+
+warning: unused import: `bytes::Bytes`
+  --> src/file/s3_repository.rs:11:5
+   |
+11 | use bytes::Bytes;
+   |     ^^^^^^^^^^^^
+
+warning: unused import: `crate::file::local_repository::FileRepository`
+  --> src/injection.rs:23:5
+   |
+23 | use crate::file::local_repository::FileRepository;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: use of deprecated function `aws_config::load_from_env`: Use the `aws_config::load_defaults` function. If you don't care about future default behavior changes, you can continue to use this function by enabling the `behavior-version-latest` feature. Doing so will make this deprecation notice go away.
+  --> src/file/s3_repository.rs:20:34
+   |
+20 |         let config = aws_config::load_from_env().await;
+   |                                  ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(deprecated)]` on by default
+
+warning: unreachable expression
+   --> src/main.rs:119:5
+    |
+ 94 | /     loop {
+ 95 | |         if let Ok((stream, _)) = listener.accept().await {
+ 96 | |             let io = hyper_util::rt::TokioIo::new(stream);
+ 97 | |             let auth = Arc::clone(&s3_auth);
+...   |
+117 | |     }
+    | |_____- any code following this expression is unreachable
+118 |
+119 |       Ok(())
+    |       ^^^^^^ unreachable expression
+    |
+    = note: `#[warn(unreachable_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `futures::stream::StreamExt`
+  --> src/file/s3_repository.rs:10:5
+   |
+10 | use futures::stream::StreamExt;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: variable does not need to be mutable
+   --> src/file/s3_repository.rs:166:13
+    |
+166 |         let mut objects = self.client
+    |             ----^^^^^^^
+    |             |
+    |             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `client`
+   --> src/file/s3_repository.rs:325:17
+    |
+325 |             let client = self.client.clone();
+    |                 ^^^^^^ help: if this is intentional, prefix it with an underscore: `_client`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `bucket`
+   --> src/file/s3_repository.rs:326:17
+    |
+326 |             let bucket = self.bucket.clone();
+    |                 ^^^^^^ help: if this is intentional, prefix it with an underscore: `_bucket`
+
+warning: unused variable: `key`
+   --> src/file/s3_repository.rs:327:17
+    |
+327 |             let key = self.key.clone();
+    |                 ^^^ help: if this is intentional, prefix it with an underscore: `_key`
+
+warning: unused variable: `pos`
+   --> src/file/s3_repository.rs:328:17
+    |
+328 |             let pos = self.pos;
+    |                 ^^^ help: if this is intentional, prefix it with an underscore: `_pos`
+
+warning: unused variable: `client`
+   --> src/file/s3_repository.rs:373:17
+    |
+373 |             let client = self.client.clone();
+    |                 ^^^^^^ help: if this is intentional, prefix it with an underscore: `_client`
+
+warning: unused variable: `bucket`
+   --> src/file/s3_repository.rs:374:17
+    |
+374 |             let bucket = self.bucket.clone();
+    |                 ^^^^^^ help: if this is intentional, prefix it with an underscore: `_bucket`
+
+warning: unused variable: `key`
+   --> src/file/s3_repository.rs:375:17
+    |
+375 |             let key = self.key.clone();
+    |                 ^^^ help: if this is intentional, prefix it with an underscore: `_key`
+
+warning: unused variable: `pos`
+   --> src/file/s3_repository.rs:376:17
+    |
+376 |             let pos = self.pos;
+    |                 ^^^ help: if this is intentional, prefix it with an underscore: `_pos`
+
+warning: unused variable: `filename`
+   --> src/server/handlers/s3_handler.rs:159:9
+    |
+159 |     let filename = path.split('/').last().unwrap_or(path);
+    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_filename`
+
+Some errors have detailed explanations: E0432, E0433.
+For more information about an error, try `rustc --explain E0432`.
+warning: `tcp_file_server` (bin "server") generated 17 warnings
+error: could not compile `tcp_file_server` (bin "server") due to 7 previous errors; 17 warnings emitted

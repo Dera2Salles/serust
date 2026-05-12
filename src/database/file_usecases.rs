@@ -93,44 +93,16 @@ impl SoftDeleteFileDbUseCase {
     }
 }
 
-pub struct RestoreFileDbUseCase {
+pub struct ListFilesByParentUseCase {
     repo: Arc<dyn IFileDatabaseRepository>,
 }
 
-impl RestoreFileDbUseCase {
+impl ListFilesByParentUseCase {
     pub fn new(repo: Arc<dyn IFileDatabaseRepository>) -> Self {
         Self { repo }
     }
 
-    pub async fn execute(&self, id: Uuid) -> Result<()> {
-        self.repo.restore(id).await
-    }
-}
-
-pub struct FindDeletedFilesDbUseCase {
-    repo: Arc<dyn IFileDatabaseRepository>,
-}
-
-impl FindDeletedFilesDbUseCase {
-    pub fn new(repo: Arc<dyn IFileDatabaseRepository>) -> Self {
-        Self { repo }
-    }
-
-    pub async fn execute(&self, owner_id: Uuid) -> Result<Vec<DbFileMetadata>> {
-        self.repo.find_deleted_by_owner(owner_id).await
-    }
-}
-
-pub struct PermanentDeleteFileDbUseCase {
-    repo: Arc<dyn IFileDatabaseRepository>,
-}
-
-impl PermanentDeleteFileDbUseCase {
-    pub fn new(repo: Arc<dyn IFileDatabaseRepository>) -> Self {
-        Self { repo }
-    }
-
-    pub async fn execute(&self, id: Uuid) -> Result<()> {
-        self.repo.delete_permanently(id).await
+    pub async fn execute(&self, parent_path: &str) -> Result<Vec<DbFileMetadata>> {
+        self.repo.find_by_parent_path(parent_path).await
     }
 }

@@ -1,6 +1,6 @@
 use crate::common::error::DomainError;
 use crate::common::permission::PermissionChecker;
-use crate::database::file_usecases::FindFileByPathUseCase;
+use crate::database::file_usecases::{FindFileByPathUseCase, ListFilesByParentUseCase};
 use crate::file::interfaces::IFileRepository;
 use crate::share::service::ShareService;
 use crate::user::domain::User;
@@ -10,6 +10,7 @@ pub struct ListUseCase {
     file_repo: Arc<dyn IFileRepository>,
     shares: Arc<ShareService>,
     find_db_file: Arc<FindFileByPathUseCase>,
+    list_db_files: Arc<ListFilesByParentUseCase>,
 }
 
 impl ListUseCase {
@@ -17,11 +18,13 @@ impl ListUseCase {
         file_repo: Arc<dyn IFileRepository>,
         shares: Arc<ShareService>,
         find_db_file: Arc<FindFileByPathUseCase>,
+        list_db_files: Arc<ListFilesByParentUseCase>,
     ) -> Self {
         Self {
             file_repo,
             shares,
             find_db_file,
+            list_db_files,
         }
     }
 
@@ -88,24 +91,15 @@ impl ListUseCase {
     ) -> Result<Vec<(String, bool)>, DomainError> {
         let resolved = PermissionChecker::resolve_path(cwd, "");
 
+        let db_parent_path = format!("/{}", resolved).trim_end_matches('/').to_string();
+        let db_entries = self.list_db_files.execute(&db_parent_path).await.unwrap_or_default();
+        
         if resolved.is_empty() {
-            let entries = self.file_repo.list_entries(&user.username, "").await?;
             let mut filtered = Vec::new();
-            for (name, is_dir) in entries {
-                if name == "shared" && is_dir {
-                    filtered.push((name, is_dir));
-                    continue;
-                }
-                let storage_path = format!("/{}", name);
-                if let Ok(Some(db_meta)) = self.find_db_file.execute(&storage_path).await {
-                    if db_meta.is_deleted {
-                        println!("DEBUG: Filtering out deleted file: {}", storage_path);
-                        continue;
-                    }
-                } else {
-                    println!("DEBUG: File not found in DB for listing: {}", storage_path);
-                }
-                filtered.push((name, is_dir));
+            for meta in db_entries {
+                if meta.is_deleted { continue; }
+                let is_dir = meta.mime_type.as_deref() == Some("inode/directory");
+                filtered.push((meta.filename, is_dir));
             }
 
             if !filtered.iter().any(|(n, is_dir)| n == "shared" && *is_dir) {
@@ -144,20 +138,21 @@ impl ListUseCase {
             return Ok(children);
         }
 
-        let entries = self
-            .file_repo
-            .list_entries(&user.username, &resolved)
-            .await?;
         let mut filtered = Vec::new();
-        for (name, is_dir) in entries {
-            let storage_path = format!("/{}", PermissionChecker::resolve_path(&resolved, &name));
-            if let Ok(Some(db_meta)) = self.find_db_file.execute(&storage_path).await {
-                if db_meta.is_deleted {
-                    continue;
-                }
-            }
-            filtered.push((name, is_dir));
+        for meta in db_entries {
+            if meta.is_deleted { continue; }
+            let is_dir = meta.mime_type.as_deref() == Some("inode/directory");
+            filtered.push((meta.filename, is_dir));
         }
+        
+        if filtered.is_empty() {
+            let entries = self.file_repo.list_entries(&user.username, &resolved).await?;
+            for (name, is_dir) in entries {
+                filtered.push((name, is_dir));
+            }
+        }
+
+        filtered.sort_by(|a, b| a.0.cmp(&b.0));
         Ok(filtered)
     }
 }

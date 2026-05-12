@@ -22,7 +22,6 @@ pub struct McpServerState {
     #[allow(dead_code)]
     pub file_service: Arc<FileService>,
     pub db: Database,
-    pub metrics: Arc<crate::framework::metrics::Metrics>,
 }
 
 /// Start the MCP HTTP server on a separate port.
@@ -91,8 +90,7 @@ async fn handle_http(
     }
 
     if method == Method::GET && path == "/api/server/status" {
-        let snapshot = state.metrics.snapshot();
-        return Ok(json_response(StatusCode::OK, json!(snapshot), &cors_headers));
+        return Ok(json_response(StatusCode::OK, json!({"status": "ok"}), &cors_headers));
     }
 
     if method == Method::GET && path == "/api/storage/stats" {

@@ -1,7 +1,6 @@
 mod common;
 mod database;
 mod file;
-mod framework;
 mod injection;
 mod log;
 mod mcp;
@@ -10,7 +9,6 @@ mod share;
 mod user;
 mod webdav;
 
-use framework::metrics::Metrics;
 use mcp::{
     registry::McpRegistry,
     server::{run_mcp_server, McpServerState},
@@ -33,12 +31,6 @@ async fn main() -> anyhow::Result<()> {
     let file_service = services.file_service;
     let db = services.db;
 
-    let server = server::tcp_server::TcpServer::new(
-        Arc::clone(&auth_service),
-        Arc::clone(&file_service),
-        Arc::clone(&share_service),
-    );
-    let metrics = server.metrics();
 
     let mcp_registry = Arc::new(McpRegistry::new(
         Arc::clone(&file_service),
@@ -51,7 +43,6 @@ async fn main() -> anyhow::Result<()> {
         registry: Arc::clone(&mcp_registry),
         file_service: Arc::clone(&file_service),
         db: db.clone(),
-        metrics: Arc::clone(&metrics),
     });
     tokio::spawn(async move {
         if let Err(e) = run_mcp_server(mcp_state, "0.0.0.0:8081").await {
@@ -59,25 +50,6 @@ async fn main() -> anyhow::Result<()> {
         }
     });
     info!("MCP server spawned on 0.0.0.0:8081");
-
-    let fallback_auth = Arc::clone(&auth_service);
-    let fallback_files = Arc::clone(&file_service);
-    tokio::spawn(async move {
-        if let Ok(listener) = tokio::net::TcpListener::bind("0.0.0.0:8082").await {
-            info!("Legacy Raw Protocol fallback listening on 0.0.0.0:8082");
-            while let Ok((stream, _)) = listener.accept().await {
-                let mut handler =
-                    crate::server::interface::connection_handler::ConnectionHandler::new(
-                        stream,
-                        Arc::clone(&fallback_auth),
-                        Arc::clone(&fallback_files),
-                    );
-                tokio::spawn(async move {
-                    let _ = handler.handle().await;
-                });
-            }
-        }
-    });
 
     let webdav_auth = Arc::clone(&auth_service);
     let webdav_files = Arc::clone(&file_service);
@@ -112,9 +84,35 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    server.run("0.0.0.0:8080").await?;
-
-    Ok(())
+    let s3_auth = Arc::clone(&auth_service);
+    let s3_files = Arc::clone(&file_service);
+    let addr: std::net::SocketAddr = "0.0.0.0:8084".parse().unwrap();
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    tracing::info!("S3 API server listening on {}", addr);
+    loop {
+        if let Ok((stream, _)) = listener.accept().await {
+            let io = hyper_util::rt::TokioIo::new(stream);
+            let auth = Arc::clone(&s3_auth);
+            let files = Arc::clone(&s3_files);
+            tokio::task::spawn(async move {
+                if let Err(err) = hyper::server::conn::http1::Builder::new()
+                    .serve_connection(
+                        io,
+                        hyper::service::service_fn(move |req| {
+                            crate::server::handlers::s3_handler::serve_s3(
+                                req,
+                                Arc::clone(&auth),
+                                Arc::clone(&files),
+                            )
+                        }),
+                    )
+                    .await
+                {
+                    tracing::error!("Error serving S3 API connection: {:?}", err);
+                }
+            });
+        }
+    }
 }
 
 #[cfg(test)]

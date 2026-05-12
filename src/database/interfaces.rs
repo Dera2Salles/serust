@@ -25,6 +25,7 @@ pub trait IFileDatabaseRepository: Send + Sync {
     async fn restore(&self, id: Uuid) -> Result<()>;
     async fn find_deleted_by_owner(&self, owner_id: Uuid) -> Result<Vec<DbFileMetadata>>;
     async fn delete_permanently(&self, id: Uuid) -> Result<()>;
+    async fn find_by_parent_path(&self, parent_path: &str) -> Result<Vec<DbFileMetadata>>;
 }
 
 #[async_trait]

@@ -2,6 +2,9 @@ use crate::common::error::DomainError;
 use crate::file::domain::FileMetadata;
 use async_trait::async_trait;
 
+pub trait AsyncReadSeek: tokio::io::AsyncRead + tokio::io::AsyncSeek + Send {}
+impl<T: tokio::io::AsyncRead + tokio::io::AsyncSeek + Send + ?Sized> AsyncReadSeek for T {}
+
 #[async_trait]
 pub trait IFileRepository: Send + Sync {
     async fn store(&self, meta: FileMetadata, data: Vec<u8>) -> Result<(), DomainError>;
@@ -35,5 +38,13 @@ pub trait IFileRepository: Send + Sync {
         &self,
         username: &str,
         rel_path: &str,
-    ) -> Result<tokio::fs::File, DomainError>;
+    ) -> Result<std::pin::Pin<Box<dyn AsyncReadSeek>>, DomainError>;
+
+    async fn get_presigned_url(
+        &self,
+        _username: &str,
+        _rel_path: &str,
+    ) -> Result<Option<String>, DomainError> {
+        Ok(None)
+    }
 }

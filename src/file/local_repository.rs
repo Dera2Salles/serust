@@ -212,12 +212,12 @@ impl IFileRepository for FileRepository {
         &self,
         username: &str,
         rel_path: &str,
-    ) -> Result<tokio::fs::File, DomainError> {
+    ) -> Result<std::pin::Pin<Box<dyn crate::file::interfaces::AsyncReadSeek>>, DomainError> {
         let path = self.user_path(username, rel_path);
         if !path.exists() {
             return Err(DomainError::FileNotFound);
         }
         let file = fs::File::open(&path).await?;
-        Ok(file)
+        Ok(Box::pin(file))
     }
 }

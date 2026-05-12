@@ -3,8 +3,8 @@ use crate::file::compression_service::{CompressionFormat, CompressionService};
 use crate::file::git_service::GitService;
 use crate::file::interfaces::IFileRepository;
 use crate::file::{
-    DeleteUseCase, DirExistsUseCase, DownloadUseCase, ListUseCase, MkdirUseCase, PurgeUseCase,
-    RemoveDirUseCase, RenameUseCase, RestoreUseCase, StatUseCase, UploadUseCase,
+    DeleteUseCase, DownloadUseCase, ListUseCase, MkdirUseCase,
+    RemoveDirUseCase, RenameUseCase, StatUseCase, UploadUseCase,
 };
 use crate::user::domain::User;
 use std::path::PathBuf;
@@ -21,9 +21,7 @@ pub struct FileService {
     stat: Arc<StatUseCase>,
     rename: Arc<RenameUseCase>,
     rmdir: Arc<RemoveDirUseCase>,
-    dir_exists: Arc<DirExistsUseCase>,
-    restore: Arc<RestoreUseCase>,
-    purge: Arc<PurgeUseCase>,
+
     pub git: Arc<GitService>,
     pub compression: Arc<CompressionService>,
 }
@@ -40,9 +38,7 @@ impl FileService {
         stat: Arc<StatUseCase>,
         rename: Arc<RenameUseCase>,
         rmdir: Arc<RemoveDirUseCase>,
-        dir_exists: Arc<DirExistsUseCase>,
-        restore: Arc<RestoreUseCase>,
-        purge: Arc<PurgeUseCase>,
+
         git: Arc<GitService>,
         compression: Arc<CompressionService>,
     ) -> Self {
@@ -57,9 +53,7 @@ impl FileService {
             stat,
             rename,
             rmdir,
-            dir_exists,
-            restore,
-            purge,
+
             git,
             compression,
         }
@@ -187,30 +181,33 @@ impl FileService {
         self.rmdir.execute(user, cwd, dirname).await
     }
 
-    pub async fn dir_exists(&self, user: &User, cwd: &str, dirname: &str) -> bool {
-        self.dir_exists.execute(user, cwd, dirname).await
-    }
 
-    pub async fn restore(&self, user: &User, cwd: &str, filename: &str) -> Result<(), DomainError> {
-        self.restore.execute(user, cwd, filename).await
-    }
-
-    pub async fn purge(&self, user: &User) -> Result<(), DomainError> {
-        self.purge.execute(user).await
-    }
 
     pub async fn get_reader(
         &self,
         user: &User,
         cwd: &str,
         filename: &str,
-    ) -> Result<tokio::fs::File, DomainError> {
+    ) -> Result<std::pin::Pin<Box<dyn crate::file::interfaces::AsyncReadSeek>>, DomainError> {
         let resolved = crate::common::permission::PermissionChecker::resolve_path(cwd, filename);
         if !crate::common::permission::PermissionChecker::is_safe_path(&resolved) {
             return Err(DomainError::UnsafePath);
         }
 
-        // For now, only allowing owner to get reader directly. 
         self.file_repo.get_reader(&user.username, &resolved).await
+    }
+
+    pub async fn get_presigned_url(
+        &self,
+        user: &User,
+        cwd: &str,
+        filename: &str,
+    ) -> Result<Option<String>, DomainError> {
+        let resolved = crate::common::permission::PermissionChecker::resolve_path(cwd, filename);
+        if !crate::common::permission::PermissionChecker::is_safe_path(&resolved) {
+            return Err(DomainError::UnsafePath);
+        }
+
+        self.file_repo.get_presigned_url(&user.username, &resolved).await
     }
 }

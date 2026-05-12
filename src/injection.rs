@@ -3,8 +3,8 @@ use crate::database::{
     domain::{DbAccessLog, DbFileMetadata, DbShareGrant, DbShareLink, DbUser},
     file_repository::FileRepository as DbFileRepository,
     file_usecases::{
-        CreateFileUseCase, FindDeletedFilesDbUseCase, FindFileByPathUseCase, FindFileUseCase,
-        PermanentDeleteFileDbUseCase, RenameFileDbUseCase, RestoreFileDbUseCase,
+        CreateFileUseCase, FindFileByPathUseCase, FindFileUseCase,
+        RenameFileDbUseCase,
         SoftDeleteFileDbUseCase, UpdateFileUseCase,
     },
     interfaces::{
@@ -20,7 +20,6 @@ use crate::database::{
 use crate::file::compression_service::CompressionService;
 use crate::file::git_service::GitService;
 use crate::file::interfaces::IFileRepository;
-use crate::file::local_repository::FileRepository;
 use crate::file::service::FileService;
 use crate::share::local_repository::ShareRepository;
 use crate::share::service::ShareService;
@@ -39,7 +38,11 @@ pub struct Services {
 
 pub async fn setup_injection() -> Result<Services> {
     let storage_root = PathBuf::from("storage");
-    let file_repo = Arc::new(FileRepository::new(storage_root.clone()));
+    
+    let bucket = std::env::var("S3_BUCKET_NAME").unwrap_or_else(|_| "arosaina-storage".to_string());
+    info!("Configuration S3 avec le bucket : {}", bucket);
+
+    let file_repo = Arc::new(crate::file::s3_repository::S3Repository::new(bucket.clone()).await);
     let share_repo = Arc::new(ShareRepository::new("shares.json").await);
 
     info!("Initialisation de la base de données SQLite...");
@@ -74,13 +77,8 @@ pub async fn setup_injection() -> Result<Services> {
     let soft_delete_db_file_usecase = Arc::new(SoftDeleteFileDbUseCase::new(
         Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>,
     ));
-    let restore_db_file_usecase = Arc::new(RestoreFileDbUseCase::new(
-        Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>,
-    ));
-    let find_deleted_files_db_usecase = Arc::new(FindDeletedFilesDbUseCase::new(
-        Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>,
-    ));
-    let permanent_delete_db_file_usecase = Arc::new(PermanentDeleteFileDbUseCase::new(
+
+    let list_files_by_parent_usecase = Arc::new(crate::database::file_usecases::ListFilesByParentUseCase::new(
         Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>,
     ));
     let create_link_usecase = Arc::new(CreateLinkUseCase::new(
@@ -99,7 +97,7 @@ pub async fn setup_injection() -> Result<Services> {
     ));
     let share_service = Arc::new(ShareService::new(Arc::clone(&share_repo)));
 
-    let git_service = Arc::new(GitService::new());
+    let git_service = Arc::new(GitService::new(Some(bucket.clone())));
     let compression_service = Arc::new(CompressionService::new());
 
     let download_usecase = Arc::new(crate::file::DownloadUseCase::new(
@@ -120,6 +118,7 @@ pub async fn setup_injection() -> Result<Services> {
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
         Arc::clone(&share_service),
         Arc::clone(&find_file_by_path_usecase),
+        Arc::clone(&list_files_by_parent_usecase),
     ));
     let mkdir_usecase = Arc::new(crate::file::MkdirUseCase::new(
         storage_root.clone(),
@@ -154,24 +153,8 @@ pub async fn setup_injection() -> Result<Services> {
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
         Arc::clone(&git_service),
     ));
-    let dir_exists_usecase = Arc::new(crate::file::DirExistsUseCase::new(
-        Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
-    ));
-    let restore_usecase = Arc::new(crate::file::RestoreUseCase::new(
-        storage_root.clone(),
-        Arc::clone(&find_file_by_path_usecase),
-        Arc::clone(&restore_db_file_usecase),
-        Arc::clone(&git_service),
-    ));
-    let purge_usecase = Arc::new(crate::file::PurgeUseCase::new(
-        Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
-        Arc::clone(&find_user_usecase),
-        Arc::clone(&find_deleted_files_db_usecase),
-        Arc::clone(&permanent_delete_db_file_usecase),
-    ));
-
     let file_service = Arc::new(FileService::new(
-        storage_root,
+        storage_root.clone(),
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
         download_usecase,
         upload_usecase,
@@ -181,10 +164,7 @@ pub async fn setup_injection() -> Result<Services> {
         stat_usecase,
         rename_usecase,
         rmdir_usecase,
-        dir_exists_usecase,
-        restore_usecase,
-        purge_usecase,
-        git_service,
+        git_service.clone(),
         compression_service,
     ));
 
@@ -198,7 +178,9 @@ pub async fn setup_injection() -> Result<Services> {
         ("dera", "dera123"),
     ] {
         let _ = auth_service.register(name, pass).await;
-        info!("Utilisateur prêt : {}", name);
+        let user_path = storage_root.join(name);
+        let _ = git_service.setup_s3_remote(&user_path, &bucket, name);
+        info!("Utilisateur prêt avec remote S3 : {}", name);
     }
 
     let admin_username = "admin_dev";
