@@ -1,4 +1,5 @@
 use crate::file::service::FileService;
+use crate::share::service::ShareService;
 use crate::user::service::AuthService;
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
@@ -14,8 +15,9 @@ pub async fn serve_s3(
     req: Request<Incoming>,
     auth: Arc<AuthService>,
     files: Arc<FileService>,
+    shares: Arc<ShareService>,
 ) -> Result<S3Response, Infallible> {
-    match handle_request(req, auth, files).await {
+    match handle_request(req, auth, files, shares).await {
         Ok(response) => Ok(response),
         Err(e) => {
             error!("S3 API error: {:?}", e);
@@ -30,8 +32,9 @@ async fn handle_request(
     req: Request<Incoming>,
     auth: Arc<AuthService>,
     files: Arc<FileService>,
+    shares: Arc<ShareService>,
 ) -> Result<S3Response, BoxError> {
-    // 1. Authentication (Basic Auth for simplicity, mimicking S3 keys)
+    // 1. Authentication
     let user = match authenticate(&req, auth).await {
         Ok(u) => u,
         Err(_) => {
@@ -46,16 +49,13 @@ async fn handle_request(
 
     info!("S3 API: {} {} for user {}", method, path, user.username);
 
-    // S3 paths usually look like /bucket/key...
-    // We'll strip the bucket part (first segment)
     let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
-    if segments.len() < 1 {
+    if segments.is_empty() {
         let mut res = Response::new(Full::new(Bytes::from("Invalid S3 path")));
         *res.status_mut() = StatusCode::BAD_REQUEST;
         return Ok(res);
     }
 
-    // First segment is bucket, rest is key (which is our rel_path)
     let rel_path = segments[1..].join("/");
 
     match method.as_str() {
@@ -64,8 +64,18 @@ async fn handle_request(
                 if query.contains("list-type=2") {
                     return handle_list_objects(&user, &rel_path, files).await;
                 }
+                if query.contains("shares=in") {
+                    return handle_list_shares(&req, &user, shares).await;
+                }
                 if query.contains("git=history") {
                     return handle_git_history(&user, &rel_path, files).await;
+                }
+                if query.contains("git=diff") {
+                    let hash = query.split('&')
+                        .find(|s| s.starts_with("hash="))
+                        .and_then(|s| s.split('=').nth(1))
+                        .unwrap_or("");
+                    return handle_git_diff(&user, &rel_path, hash, files).await;
                 }
             }
             handle_get_object(&req, &user, &rel_path, files).await
@@ -78,6 +88,18 @@ async fn handle_request(
                         .and_then(|s| s.split('=').nth(1))
                         .unwrap_or("");
                     return handle_git_restore(&user, &rel_path, hash, files).await;
+                }
+                if query.contains("share=grant") {
+                    let to = query.split('&').find(|s| s.starts_with("to=")).and_then(|s| s.split('=').nth(1)).unwrap_or("");
+                    let perm = query.split('&').find(|s| s.starts_with("perm=")).and_then(|s| s.split('=').nth(1)).unwrap_or("read");
+                    return handle_share_grant(&user, &rel_path, to, perm, shares).await;
+                }
+                if query.contains("compress=") {
+                    let format = query.split('&').find(|s| s.starts_with("compress=")).and_then(|s| s.split('=').nth(1)).unwrap_or("zip");
+                    return handle_compress(&user, &rel_path, format, files).await;
+                }
+                if query.contains("decompress=true") {
+                    return handle_decompress(&user, &rel_path, files).await;
                 }
             }
             let mut res = Response::new(Full::new(Bytes::from("Method Not Allowed")));
@@ -123,7 +145,6 @@ async fn handle_get_object(
     path: &str,
     files: Arc<FileService>,
 ) -> Result<S3Response, BoxError> {
-    // Check for presign request
     if req.uri().query().map(|q| q.contains("presign=true")).unwrap_or(false) {
         if let Ok(Some(url)) = files.get_presigned_url(user, "/", path).await {
             let mut res = Response::new(Full::new(Bytes::new()));
@@ -155,8 +176,6 @@ async fn handle_put_object(
 ) -> Result<S3Response, BoxError> {
     let body_bytes = req.into_body().collect().await?.to_bytes();
     let size = body_bytes.len() as u64;
-
-    let _filename = path.split('/').last().unwrap_or(path);
 
     match files.upload(user, "/", path, size, body_bytes.to_vec()).await {
         Ok(_) => {
@@ -209,7 +228,7 @@ async fn handle_list_objects(
                 } else {
                     xml.push_str("  <Contents>\n");
                     xml.push_str(&format!("    <Key>{}{}</Key>\n", path, name));
-                    xml.push_str("    <Size>0</Size>\n"); // Simplified
+                    xml.push_str("    <Size>0</Size>\n");
                     xml.push_str("  </Contents>\n");
                 }
             }
@@ -232,12 +251,8 @@ async fn handle_git_history(
     path: &str,
     files: Arc<FileService>,
 ) -> Result<S3Response, BoxError> {
-    let cwd = if path.contains('/') {
-        path.rsplitn(2, '/').nth(1).unwrap_or("/")
-    } else {
-        "/"
-    };
     let filename = path.split('/').last().unwrap_or(path);
+    let cwd = if path.contains('/') { path.rsplitn(2, '/').nth(1).unwrap_or("/") } else { "/" };
 
     match files.git_history(user, cwd, filename).await {
         Ok(history) => {
@@ -257,18 +272,37 @@ async fn handle_git_history(
     }
 }
 
+async fn handle_git_diff(
+    user: &crate::user::domain::User,
+    path: &str,
+    hash: &str,
+    files: Arc<FileService>,
+) -> Result<S3Response, BoxError> {
+    let filename = path.split('/').last().unwrap_or(path);
+    let cwd = if path.contains('/') { path.rsplitn(2, '/').nth(1).unwrap_or("/") } else { "/" };
+
+    match files.git_diff(user, cwd, filename, hash).await {
+        Ok(diff) => {
+            let mut res = Response::new(Full::new(Bytes::from(diff)));
+            res.headers_mut().insert(header::CONTENT_TYPE, "text/plain".parse()?);
+            Ok(res)
+        }
+        Err(_) => {
+            let mut res = Response::new(Full::new(Bytes::from("Error fetching diff")));
+            *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+            Ok(res)
+        }
+    }
+}
+
 async fn handle_git_restore(
     user: &crate::user::domain::User,
     path: &str,
     hash: &str,
     files: Arc<FileService>,
 ) -> Result<S3Response, BoxError> {
-    let cwd = if path.contains('/') {
-        path.rsplitn(2, '/').nth(1).unwrap_or("/")
-    } else {
-        "/"
-    };
     let filename = path.split('/').last().unwrap_or(path);
+    let cwd = if path.contains('/') { path.rsplitn(2, '/').nth(1).unwrap_or("/") } else { "/" };
 
     match files.git_restore(user, cwd, filename, hash).await {
         Ok(_) => {
@@ -283,3 +317,101 @@ async fn handle_git_restore(
         }
     }
 }
+
+async fn handle_share_grant(
+    user: &crate::user::domain::User,
+    path: &str,
+    to: &str,
+    perm: &str,
+    shares: Arc<ShareService>,
+) -> Result<S3Response, BoxError> {
+    let can_read = perm.contains('r');
+    let can_write = perm.contains('w');
+    let can_download = perm.contains('d');
+    
+    match shares.grant(&user.username, "/", path, to, can_read, can_write, can_download, None, None, None, false, &user.username, None).await {
+        Ok(_) => {
+            let mut res = Response::new(Full::new(Bytes::new()));
+            *res.status_mut() = StatusCode::OK;
+            Ok(res)
+        }
+        Err(_) => {
+            let mut res = Response::new(Full::new(Bytes::from("Error granting share")));
+            *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+            Ok(res)
+        }
+    }
+}
+
+async fn handle_list_shares(
+    req: &Request<Incoming>,
+    user: &crate::user::domain::User,
+    shares: Arc<ShareService>,
+) -> Result<S3Response, BoxError> {
+    let query = req.uri().query().unwrap_or("");
+    let is_out = query.contains("type=out");
+    
+    let list = if is_out {
+        shares.list_outgoing(&user.username).await
+    } else {
+        shares.list_incoming(&user.username).await
+    };
+
+    let mut result = String::new();
+    for g in list {
+        if is_out {
+            result.push_str(&format!("grantee={} path={} perm={}\n", g.grantee, g.path, if g.can_read { "r" } else { "" }));
+        } else {
+            result.push_str(&format!("owner={} path={} perm={}\n", g.owner, g.path, if g.can_read { "r" } else { "" }));
+        }
+    }
+    let mut res = Response::new(Full::new(Bytes::from(result)));
+    res.headers_mut().insert(header::CONTENT_TYPE, "text/plain".parse()?);
+    Ok(res)
+}
+
+async fn handle_compress(
+    user: &crate::user::domain::User,
+    path: &str,
+    format: &str,
+    files: Arc<FileService>,
+) -> Result<S3Response, BoxError> {
+    let filename = path.split('/').last().unwrap_or(path);
+    let cwd = if path.contains('/') { path.rsplitn(2, '/').nth(1).unwrap_or("/") } else { "/" };
+
+    match files.compress(user, cwd, filename, format).await {
+        Ok(out) => {
+            let mut res = Response::new(Full::new(Bytes::from(out)));
+            *res.status_mut() = StatusCode::OK;
+            Ok(res)
+        }
+        Err(_) => {
+            let mut res = Response::new(Full::new(Bytes::from("Error compressing")));
+            *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+            Ok(res)
+        }
+    }
+}
+
+async fn handle_decompress(
+    user: &crate::user::domain::User,
+    path: &str,
+    files: Arc<FileService>,
+) -> Result<S3Response, BoxError> {
+    let filename = path.split('/').last().unwrap_or(path);
+    let cwd = if path.contains('/') { path.rsplitn(2, '/').nth(1).unwrap_or("/") } else { "/" };
+
+    match files.decompress(user, cwd, filename).await {
+        Ok(_) => {
+            let mut res = Response::new(Full::new(Bytes::new()));
+            *res.status_mut() = StatusCode::OK;
+            Ok(res)
+        }
+        Err(_) => {
+            let mut res = Response::new(Full::new(Bytes::from("Error decompressing")));
+            *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+            Ok(res)
+        }
+    }
+}
+

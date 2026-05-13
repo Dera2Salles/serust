@@ -9,7 +9,7 @@ use std::sync::Arc;
 pub struct ListUseCase {
     file_repo: Arc<dyn IFileRepository>,
     shares: Arc<ShareService>,
-    find_db_file: Arc<FindFileByPathUseCase>,
+    _find_db_file: Arc<FindFileByPathUseCase>,
     list_db_files: Arc<ListFilesByParentUseCase>,
 }
 
@@ -23,7 +23,7 @@ impl ListUseCase {
         Self {
             file_repo,
             shares,
-            find_db_file,
+            _find_db_file: find_db_file,
             list_db_files,
         }
     }

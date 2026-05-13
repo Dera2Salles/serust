@@ -86,6 +86,7 @@ async fn main() -> anyhow::Result<()> {
 
     let s3_auth = Arc::clone(&auth_service);
     let s3_files = Arc::clone(&file_service);
+    let s3_shares = Arc::clone(&share_service);
     let addr: std::net::SocketAddr = "0.0.0.0:8084".parse().unwrap();
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!("S3 API server listening on {}", addr);
@@ -94,6 +95,7 @@ async fn main() -> anyhow::Result<()> {
             let io = hyper_util::rt::TokioIo::new(stream);
             let auth = Arc::clone(&s3_auth);
             let files = Arc::clone(&s3_files);
+            let shares = Arc::clone(&s3_shares);
             tokio::task::spawn(async move {
                 if let Err(err) = hyper::server::conn::http1::Builder::new()
                     .serve_connection(
@@ -103,6 +105,7 @@ async fn main() -> anyhow::Result<()> {
                                 req,
                                 Arc::clone(&auth),
                                 Arc::clone(&files),
+                                Arc::clone(&shares),
                             )
                         }),
                     )

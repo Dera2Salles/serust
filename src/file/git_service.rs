@@ -177,6 +177,7 @@ impl GitService {
     }
 
     /// Pulls changes from the S3 remote.
+    #[allow(dead_code)]
     pub fn sync_from_s3(&self, user_path: &Path) -> Result<(), DomainError> {
         debug!("Syncing Git repository at {:?} from S3 remote", user_path);
         let output = std::process::Command::new("git")

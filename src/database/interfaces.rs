@@ -14,6 +14,7 @@ pub trait IUserRepository: Send + Sync {
     async fn list_all(&self) -> Result<Vec<DbUser>>;
 }
 
+#[allow(dead_code)]
 #[async_trait]
 pub trait IFileDatabaseRepository: Send + Sync {
     async fn create(&self, file: &DbFileMetadata) -> Result<()>;

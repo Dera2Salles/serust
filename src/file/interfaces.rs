@@ -5,6 +5,7 @@ use async_trait::async_trait;
 pub trait AsyncReadSeek: tokio::io::AsyncRead + tokio::io::AsyncSeek + Send {}
 impl<T: tokio::io::AsyncRead + tokio::io::AsyncSeek + Send + ?Sized> AsyncReadSeek for T {}
 
+#[allow(dead_code)]
 #[async_trait]
 pub trait IFileRepository: Send + Sync {
     async fn store(&self, meta: FileMetadata, data: Vec<u8>) -> Result<(), DomainError>;

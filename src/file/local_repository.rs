@@ -6,10 +6,12 @@ use std::path::PathBuf;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
+#[allow(dead_code)]
 pub struct FileRepository {
     storage_root: PathBuf,
 }
 
+#[allow(dead_code)]
 impl FileRepository {
     pub fn new(storage_root: impl Into<PathBuf>) -> Self {
         Self {

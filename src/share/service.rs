@@ -32,6 +32,7 @@ impl ShareService {
     /// Resolves a path possibly referring to shared namespace:
     /// - "shared/<owner>/<path...>" → (owner, inner_path)
     /// - otherwise it belongs to `actor` → (actor, resolved_path)
+    #[allow(dead_code)]
     pub fn resolve_owner_path(
         actor: &str,
         cwd: &str,
@@ -103,6 +104,7 @@ impl ShareService {
             .await
     }
 
+    #[allow(dead_code)]
     pub async fn revoke(
         &self,
         owner: &str,
@@ -332,6 +334,7 @@ impl ShareService {
         self.repo.replace_all(grants).await
     }
 
+    #[allow(dead_code)]
     pub async fn can_reshare(&self, actor: &str, owner: &str, owner_rel_path: &str) -> bool {
         if actor == owner {
             return true;

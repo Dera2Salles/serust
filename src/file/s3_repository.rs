@@ -7,7 +7,7 @@ use aws_sdk_s3::primitives::ByteStream;
 use std::pin::Pin;
 use tokio::io::{AsyncRead, AsyncSeek};
 use std::io::SeekFrom;
-use futures::stream::StreamExt;
+
 
 pub struct S3Repository {
     client: Client,
@@ -16,7 +16,7 @@ pub struct S3Repository {
 
 impl S3Repository {
     pub async fn new(bucket: String) -> Self {
-        let config = aws_config::load_from_env().await;
+        let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
         let client = Client::new(&config);
         Self { client, bucket }
     }
