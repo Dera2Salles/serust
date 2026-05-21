@@ -30,6 +30,7 @@ impl AuthService {
         let hash = Self::hash_password(password);
         match self.find_user.execute(username).await {
             Ok(Some(db_user)) if db_user.password_hash == hash => Ok(User {
+                id: db_user.id,
                 username: db_user.username,
                 password_hash: db_user.password_hash,
             }),

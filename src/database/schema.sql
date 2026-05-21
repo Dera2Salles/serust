@@ -9,6 +9,13 @@ CREATE TABLE IF NOT EXISTS users (
     is_active BOOLEAN NOT NULL DEFAULT 1
 );
 
+CREATE TABLE IF NOT EXISTS admins (
+    user_id TEXT PRIMARY KEY,
+    access_level TEXT NOT NULL DEFAULT 'standard',
+    last_action_at DATETIME,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS files (
     id TEXT PRIMARY KEY, 
     owner_id TEXT NOT NULL,
@@ -21,16 +28,6 @@ CREATE TABLE IF NOT EXISTS files (
     updated_at DATETIME NOT NULL,
     is_deleted BOOLEAN NOT NULL DEFAULT 0,
     FOREIGN KEY(owner_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS file_versions (
-    id TEXT PRIMARY KEY,
-    file_id TEXT NOT NULL,
-    storage_path TEXT NOT NULL,
-    size_bytes INTEGER NOT NULL,
-    checksum TEXT,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(file_id) REFERENCES files(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS share_links (

@@ -2,7 +2,7 @@ use crate::common::error::DomainError;
 use crate::common::permission::{Permission, PermissionChecker};
 use crate::database::domain::DbFileMetadata;
 use crate::database::file_usecases::CreateFileUseCase;
-use crate::database::user_usecases::FindUserUseCase;
+
 use crate::file::git_service::GitService;
 use crate::file::interfaces::IFileRepository;
 use crate::share::service::ShareService;
@@ -15,7 +15,6 @@ pub struct MkdirUseCase {
     file_repo: Arc<dyn IFileRepository>,
     shares: Arc<ShareService>,
     create_db_file: Arc<CreateFileUseCase>,
-    find_db_user: Arc<FindUserUseCase>,
     git_service: Arc<GitService>,
 }
 
@@ -25,7 +24,6 @@ impl MkdirUseCase {
         file_repo: Arc<dyn IFileRepository>,
         shares: Arc<ShareService>,
         create_db_file: Arc<CreateFileUseCase>,
-        find_db_user: Arc<FindUserUseCase>,
         git_service: Arc<GitService>,
     ) -> Self {
         Self {
@@ -33,7 +31,6 @@ impl MkdirUseCase {
             file_repo,
             shares,
             create_db_file,
-            find_db_user,
             git_service,
         }
     }
@@ -47,15 +44,6 @@ impl MkdirUseCase {
             return None;
         }
         Some((owner, inner))
-    }
-
-    async fn get_user_id(&self, username: &str) -> Result<uuid::Uuid, DomainError> {
-        self.find_db_user
-            .execute(username)
-            .await
-            .map_err(|e| DomainError::Internal(e.to_string()))?
-            .map(|u| u.id)
-            .ok_or(DomainError::InvalidCredentials)
     }
 
     pub async fn execute(&self, user: &User, cwd: &str, dirname: &str) -> Result<(), DomainError> {
@@ -95,7 +83,7 @@ impl MkdirUseCase {
         let user_path = self.storage_root.join(&user.username);
         let _ = self.git_service.commit_file(&user_path, &resolved, &format!("Created folder: {}", dirname));
 
-        let owner_id = self.get_user_id(&user.username).await?;
+        let owner_id = user.id;
         let db_entry = DbFileMetadata {
             id: uuid::Uuid::new_v4(),
             owner_id,

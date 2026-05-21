@@ -130,6 +130,7 @@ mod tests {
         let file_service = services.file_service;
 
         let user = User {
+            id: uuid::Uuid::new_v4(),
             username: "alice".to_string(),
             password_hash: "4e40e8ffe0ee32fa53e139147ed559229a5930f89c2204706fc174beb36210b3"
                 .to_string(),

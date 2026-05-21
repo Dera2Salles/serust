@@ -52,10 +52,12 @@ impl IFileDatabaseRepository for FileRepository {
         Self::row_to_metadata(row)
     }
 
-    async fn find_by_storage_path(&self, path: &str) -> Result<Option<DbFileMetadata>> {
+    async fn find_by_storage_path(&self, owner_id: Uuid, path: &str) -> Result<Option<DbFileMetadata>> {
+        let owner_str = owner_id.to_string();
         let row = sqlx::query(
-            "SELECT id, owner_id, filename, storage_path, size_bytes, mime_type, checksum, created_at, updated_at, is_deleted FROM files WHERE storage_path = ?"
+            "SELECT id, owner_id, filename, storage_path, size_bytes, mime_type, checksum, created_at, updated_at, is_deleted FROM files WHERE owner_id = ? AND storage_path = ?"
         )
+        .bind(&owner_str)
         .bind(path)
         .fetch_optional(&*self.db.pool)
         .await?;
@@ -65,22 +67,6 @@ impl IFileDatabaseRepository for FileRepository {
 
     async fn update(&self, file: &DbFileMetadata) -> Result<()> {
         let id_str = file.id.to_string();
-
-        let current = self.find_by_id(file.id).await?;
-        if let Some(old) = current {
-            let version_id = Uuid::new_v4().to_string();
-            sqlx::query(
-                "INSERT INTO file_versions (id, file_id, storage_path, size_bytes, checksum, created_at) VALUES (?, ?, ?, ?, ?, ?)"
-            )
-            .bind(&version_id)
-            .bind(&id_str)
-            .bind(&old.storage_path)
-            .bind(old.size_bytes)
-            .bind(&old.checksum)
-            .bind(old.updated_at)
-            .execute(&*self.db.pool)
-            .await?;
-        }
 
         sqlx::query("UPDATE files SET size_bytes = ?, checksum = ?, updated_at = ? WHERE id = ?")
             .bind(file.size_bytes)
@@ -155,23 +141,27 @@ impl IFileDatabaseRepository for FileRepository {
         Ok(())
     }
 
-    async fn find_by_parent_path(&self, parent_path: &str) -> Result<Vec<DbFileMetadata>> {
+    async fn find_by_parent_path(&self, owner_id: Uuid, parent_path: &str) -> Result<Vec<DbFileMetadata>> {
         let prefix = if parent_path.ends_with('/') {
             parent_path.to_string()
         } else {
             format!("{}/", parent_path)
         };
         let pattern = format!("{}%", prefix);
+        let owner_str = owner_id.to_string();
 
         // SQL query to find direct children:
         // 1. Path must start with prefix
         // 2. There should be no more '/' after the prefix (direct child)
+        // 3. Filter by owner_id
         let rows = sqlx::query(
             "SELECT id, owner_id, filename, storage_path, size_bytes, mime_type, checksum, created_at, updated_at, is_deleted 
              FROM files 
-             WHERE storage_path LIKE ? 
+             WHERE owner_id = ?
+             AND storage_path LIKE ? 
              AND instr(substr(storage_path, length(?) + 1), '/') = 0"
         )
+        .bind(&owner_str)
         .bind(&pattern)
         .bind(&prefix)
         .fetch_all(&*self.db.pool)

@@ -15,12 +15,6 @@ pub struct S3Repository {
 }
 
 impl S3Repository {
-    pub async fn new(bucket: String) -> Self {
-        let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
-        let client = Client::new(&config);
-        Self { client, bucket }
-    }
-
     fn user_key(&self, username: &str, rel_path: &str) -> String {
         if rel_path.is_empty() {
             format!("{}/", username)

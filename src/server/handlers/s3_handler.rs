@@ -4,6 +4,7 @@ use crate::user::service::AuthService;
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
 use hyper::{body::Incoming, header, Request, Response, StatusCode};
+use percent_encoding::percent_decode_str;
 use std::convert::Infallible;
 use std::sync::Arc;
 use tracing::{error, info};
@@ -56,7 +57,9 @@ async fn handle_request(
         return Ok(res);
     }
 
-    let rel_path = segments[1..].join("/");
+    let rel_path_raw = segments[1..].join("/");
+    let rel_path = percent_decode_str(&rel_path_raw).decode_utf8_lossy().to_string();
+    let is_dir_hint = req.uri().path().ends_with('/');
 
     match method.as_str() {
         "GET" => {
@@ -82,6 +85,11 @@ async fn handle_request(
         }
         "POST" => {
             if let Some(query) = req.uri().query() {
+                if query.contains("rename=") {
+                    let to_raw = query.split('&').find(|s| s.starts_with("rename=")).and_then(|s| s.split('=').nth(1)).unwrap_or("");
+                    let to = percent_decode_str(to_raw).decode_utf8_lossy().to_string();
+                    return handle_rename(&user, &rel_path, &to, files).await;
+                }
                 if query.contains("git=restore") {
                     let hash = query.split('&')
                         .find(|s| s.starts_with("hash="))
@@ -106,7 +114,7 @@ async fn handle_request(
             *res.status_mut() = StatusCode::METHOD_NOT_ALLOWED;
             Ok(res)
         }
-        "PUT" => handle_put_object(req, &user, &rel_path, files).await,
+        "PUT" => handle_put_object(req, &user, &rel_path, is_dir_hint, files).await,
         "DELETE" => handle_delete_object(&user, &rel_path, files).await,
         _ => {
             let mut res = Response::new(Full::new(Bytes::from("Method Not Allowed")));
@@ -168,12 +176,50 @@ async fn handle_get_object(
     }
 }
 
+async fn handle_rename(
+    user: &crate::user::domain::User,
+    from: &str,
+    to: &str,
+    files: Arc<FileService>,
+) -> Result<S3Response, BoxError> {
+    match files.rename(user, "/", from, to).await {
+        Ok(_) => {
+            let mut res = Response::new(Full::new(Bytes::new()));
+            *res.status_mut() = StatusCode::OK;
+            Ok(res)
+        }
+        Err(e) => {
+            error!("S3 Rename failed: {:?}", e);
+            let mut res = Response::new(Full::new(Bytes::from(format!("Rename failed: {}", e))));
+            *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+            Ok(res)
+        }
+    }
+}
+
 async fn handle_put_object(
     req: Request<Incoming>,
     user: &crate::user::domain::User,
     path: &str,
+    is_dir: bool,
     files: Arc<FileService>,
 ) -> Result<S3Response, BoxError> {
+    if is_dir {
+        match files.mkdir(user, "/", path).await {
+            Ok(_) => {
+                let mut res = Response::new(Full::new(Bytes::new()));
+                *res.status_mut() = StatusCode::CREATED;
+                return Ok(res);
+            }
+            Err(e) => {
+                error!("S3 MKDIR failed: {:?}", e);
+                let mut res = Response::new(Full::new(Bytes::from("Internal Error")));
+                *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+                return Ok(res);
+            }
+        }
+    }
+
     let body_bytes = req.into_body().collect().await?.to_bytes();
     let size = body_bytes.len() as u64;
 
@@ -220,15 +266,28 @@ async fn handle_list_objects(
         Ok(entries) => {
             let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
             xml.push_str("<ListBucketResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">\n");
-            xml.push_str(&format!("  <Name>arosaina-bucket</Name>\n  <Prefix>{}</Prefix>\n", path));
+            
+            let path_prefix = if path.is_empty() { 
+                "".to_string() 
+            } else if path.ends_with('/') { 
+                path.to_string() 
+            } else { 
+                format!("{}/", path) 
+            };
+
+            xml.push_str(&format!("  <Name>arosaina-bucket</Name>\n  <Prefix>{}</Prefix>\n", path_prefix));
             
             for (name, is_dir) in entries {
                 if is_dir {
-                    xml.push_str(&format!("  <CommonPrefixes><Prefix>{}{}/</Prefix></CommonPrefixes>\n", path, name));
+                    xml.push_str(&format!("  <CommonPrefixes><Prefix>{}{}/</Prefix></CommonPrefixes>\n", path_prefix, name));
                 } else {
+                    let mut size = 0;
+                    if let Ok(Some((s, _, _))) = files.stat(user, path, &name).await {
+                        size = s;
+                    }
                     xml.push_str("  <Contents>\n");
-                    xml.push_str(&format!("    <Key>{}{}</Key>\n", path, name));
-                    xml.push_str("    <Size>0</Size>\n");
+                    xml.push_str(&format!("    <Key>{}{}</Key>\n", path_prefix, name));
+                    xml.push_str(&format!("    <Size>{}</Size>\n", size));
                     xml.push_str("  </Contents>\n");
                 }
             }
@@ -325,9 +384,9 @@ async fn handle_share_grant(
     perm: &str,
     shares: Arc<ShareService>,
 ) -> Result<S3Response, BoxError> {
-    let can_read = perm.contains('r');
-    let can_write = perm.contains('w');
-    let can_download = perm.contains('d');
+    let can_read = perm.contains('r') || perm.contains('R');
+    let can_write = perm.contains('w') || perm.contains('W');
+    let can_download = perm.contains('d') || perm.contains('D');
     
     match shares.grant(&user.username, "/", path, to, can_read, can_write, can_download, None, None, None, false, &user.username, None).await {
         Ok(_) => {
@@ -357,16 +416,10 @@ async fn handle_list_shares(
         shares.list_incoming(&user.username).await
     };
 
-    let mut result = String::new();
-    for g in list {
-        if is_out {
-            result.push_str(&format!("grantee={} path={} perm={}\n", g.grantee, g.path, if g.can_read { "r" } else { "" }));
-        } else {
-            result.push_str(&format!("owner={} path={} perm={}\n", g.owner, g.path, if g.can_read { "r" } else { "" }));
-        }
-    }
+    let result = serde_json::to_string(&list)?;
+    
     let mut res = Response::new(Full::new(Bytes::from(result)));
-    res.headers_mut().insert(header::CONTENT_TYPE, "text/plain".parse()?);
+    res.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse()?);
     Ok(res)
 }
 
@@ -414,4 +467,3 @@ async fn handle_decompress(
         }
     }
 }
-

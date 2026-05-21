@@ -313,7 +313,7 @@ impl McpRegistry {
     }
 
     pub async fn list_resources(&self, username: &str) -> Vec<McpResource> {
-        let user = Self::make_user(username);
+        let user = self.make_user(username).await;
         let mut resources = Vec::new();
         Box::pin(self.collect_resources(username, &user, "/", 0, &mut resources)).await;
         resources
@@ -419,7 +419,7 @@ impl McpRegistry {
         let username = parts.next().ok_or("Missing username in URI")?;
         let path = parts.next().unwrap_or("");
 
-        let user = Self::make_user(username);
+        let user = self.make_user(username).await;
 
         let (dir, filename) = if path.contains('/') {
             path.rsplit_once('/').unwrap()
@@ -459,7 +459,7 @@ impl McpRegistry {
         match name {
             "analyze_storage" => {
                 let username = Self::get_str(args, "username")?;
-                let user = Self::make_user(username);
+                let user = self.make_user(username).await;
                 let (total_bytes, file_count, dir_count) = self.recursive_stats(&user, "/").await;
 
                 Ok(format!(
@@ -475,8 +475,10 @@ impl McpRegistry {
         }
     }
 
-    fn make_user(username: &str) -> User {
+    async fn make_user(&self, username: &str) -> User {
+        let db_user = self.user_repo.find_by_username(username).await.unwrap_or(None);
         User {
+            id: db_user.map(|u| u.id).unwrap_or_else(uuid::Uuid::nil),
             username: username.to_string(),
             password_hash: String::new(),
         }
@@ -510,24 +512,30 @@ impl McpRegistry {
             Err(e) => return McpToolResult::error(e),
         };
 
-        let user = Self::make_user(username);
+        let user = self.make_user(username).await;
         match self.file_service.list(&user, path).await {
             Ok(entries) => {
-                let mut lines = vec![format!("Contents of '{}':", path)];
-                for (name, is_dir) in &entries {
-                    let icon = if *is_dir { "📁" } else { "📄" };
-                    let mut line = format!("  {} {}", icon, name);
+                let mut list = Vec::new();
+                for (name, is_dir) in entries {
+                    let mut entry_json = json!({
+                        "name": name,
+                        "is_dir": is_dir,
+                        "size": 0,
+                        "checksum": null
+                    });
 
                     if !is_dir {
-                        if let Ok(Some((size, _, Some(checksum)))) =
-                            self.file_service.stat(&user, path, name).await
+                        if let Ok(Some((size, _, checksum))) =
+                            self.file_service.stat(&user, path, &name).await
                         {
-                            line.push_str(&format!(" (size: {}, checksum: {})", size, checksum));
+                            entry_json["size"] = json!(size);
+                            entry_json["checksum"] = json!(checksum);
                         }
                     }
-                    lines.push(line);
+                    list.push(entry_json);
                 }
-                McpToolResult::success(lines.join("\n"))
+                
+                McpToolResult::success(json!({ "entries": list }).to_string())
             }
             Err(e) => McpToolResult::error(format!("Error: {}", e)),
         }
@@ -538,7 +546,7 @@ impl McpRegistry {
             Ok(v) => v,
             Err(e) => return McpToolResult::error(e),
         };
-        let user = Self::make_user(username);
+        let user = self.make_user(username).await;
         let (total_bytes, file_count, dir_count) = self.recursive_stats(&user, "/").await;
 
         McpToolResult::success(format!(
@@ -564,7 +572,7 @@ impl McpRegistry {
             Err(e) => return McpToolResult::error(e),
         };
 
-        let user = Self::make_user(username);
+        let user = self.make_user(username).await;
         match self.file_service.mkdir(&user, path, name).await {
             Ok(_) => McpToolResult::success(format!("Folder '{}' created.", name)),
             Err(e) => McpToolResult::error(format!("Error: {}", e)),
@@ -589,7 +597,7 @@ impl McpRegistry {
             Err(e) => return McpToolResult::error(e),
         };
 
-        let user = Self::make_user(username);
+        let user = self.make_user(username).await;
         let data = content.as_bytes().to_vec();
         let size = data.len() as u64;
 
@@ -617,7 +625,7 @@ impl McpRegistry {
             Err(e) => return McpToolResult::error(e),
         };
 
-        let user = Self::make_user(username);
+        let user = self.make_user(username).await;
         match self.file_service.delete(&user, path, filename).await {
             Ok(_) => McpToolResult::success(format!("File '{}' deleted.", filename)),
             Err(e) => McpToolResult::error(format!("Error: {}", e)),
@@ -635,7 +643,7 @@ impl McpRegistry {
         };
         let root = args.get("path").and_then(|v| v.as_str()).unwrap_or("/");
 
-        let user = Self::make_user(username);
+        let user = self.make_user(username).await;
         let matches = self
             .recursive_search(&user, root, &query.to_lowercase())
             .await;
@@ -665,7 +673,7 @@ impl McpRegistry {
             Err(e) => return McpToolResult::error(e),
         };
 
-        let user = Self::make_user(username);
+        let user = self.make_user(username).await;
         match self
             .file_service
             .rename(&user, path, old_name, new_name)
@@ -690,7 +698,7 @@ impl McpRegistry {
             Err(e) => return McpToolResult::error(e),
         };
 
-        let user = Self::make_user(username);
+        let user = self.make_user(username).await;
         const MAX_PREVIEW_BYTES: usize = 128 * 1024;
         match self.file_service.download(&user, path, filename).await {
             Ok(data) => {
@@ -722,7 +730,7 @@ impl McpRegistry {
             Err(e) => return McpToolResult::error(e),
         };
 
-        let user = Self::make_user(username);
+        let user = self.make_user(username).await;
         match self
             .file_service
             .rename(&user, "/", source_path, destination_path)
@@ -950,7 +958,7 @@ impl McpRegistry {
             Err(e) => return McpToolResult::error(e),
         };
 
-        let user = Self::make_user(username);
+        let user = self.make_user(username).await;
         match self.file_service.git_history(&user, path, filename).await {
             Ok(history) => {
                 let lines: Vec<String> = history
@@ -981,7 +989,7 @@ impl McpRegistry {
             Err(e) => return McpToolResult::error(e),
         };
 
-        let user = Self::make_user(username);
+        let user = self.make_user(username).await;
         match self.file_service.git_restore(&user, path, filename, hash).await {
             Ok(_) => McpToolResult::success(format!("File '{}' restored to version {}.", filename, &hash[..8])),
             Err(e) => McpToolResult::error(format!("Error: {}", e)),
@@ -1006,7 +1014,7 @@ impl McpRegistry {
             Err(e) => return McpToolResult::error(e),
         };
 
-        let user = Self::make_user(username);
+        let user = self.make_user(username).await;
         match self.file_service.git_diff(&user, path, filename, hash).await {
             Ok(diff) => McpToolResult::success(format!("Diff for '{}' against {}:\n{}", filename, &hash[..8], diff)),
             Err(e) => McpToolResult::error(format!("Error: {}", e)),
@@ -1031,7 +1039,7 @@ impl McpRegistry {
             Err(e) => return McpToolResult::error(e),
         };
 
-        let user = Self::make_user(username);
+        let user = self.make_user(username).await;
         match self.file_service.compress(&user, path, filename, format).await {
             Ok(archive_name) => McpToolResult::success(format!("Successfully created archive: {}", archive_name)),
             Err(e) => McpToolResult::error(format!("Error: {}", e)),
@@ -1052,7 +1060,7 @@ impl McpRegistry {
             Err(e) => return McpToolResult::error(e),
         };
 
-        let user = Self::make_user(username);
+        let user = self.make_user(username).await;
         match self.file_service.decompress(&user, path, filename).await {
             Ok(_) => McpToolResult::success(format!("Successfully decompressed: {}", filename)),
             Err(e) => McpToolResult::error(format!("Error: {}", e)),

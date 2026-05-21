@@ -1,6 +1,7 @@
 use crate::database::{
     access_log_repository::AccessLogRepository as DbAccessLogRepository,
-    domain::{DbAccessLog, DbFileMetadata, DbShareGrant, DbShareLink, DbUser},
+    admin_repository::AdminRepository as DbAdminRepository,
+    domain::{DbAccessLog, DbFileMetadata, DbShareGrant, DbShareLink, DbUser, DbAdmin},
     file_repository::FileRepository as DbFileRepository,
     file_usecases::{
         CreateFileUseCase, FindFileByPathUseCase, FindFileUseCase,
@@ -8,7 +9,7 @@ use crate::database::{
         SoftDeleteFileDbUseCase, UpdateFileUseCase,
     },
     interfaces::{
-        IAccessLogRepository, IFileDatabaseRepository, IShareDatabaseRepository, IUserRepository,
+        IAccessLogRepository, IFileDatabaseRepository, IShareDatabaseRepository, IUserRepository, IAdminRepository,
     },
     log_usecases::LogAccessUseCase,
     share_repository::ShareRepository as DbShareRepository,
@@ -40,9 +41,9 @@ pub async fn setup_injection() -> Result<Services> {
     let storage_root = PathBuf::from("storage");
     
     let bucket = std::env::var("S3_BUCKET_NAME").unwrap_or_else(|_| "arosaina-storage".to_string());
-    info!("Configuration S3 avec le bucket : {}", bucket);
+    info!("Mode Stockage Local activé (Interface S3-compatible)");
 
-    let file_repo = Arc::new(crate::file::s3_repository::S3Repository::new(bucket.clone()).await);
+    let file_repo = Arc::new(crate::file::local_repository::FileRepository::new(storage_root.clone()));
     let share_repo = Arc::new(ShareRepository::new("shares.json").await);
 
     info!("Initialisation de la base de données SQLite...");
@@ -50,6 +51,7 @@ pub async fn setup_injection() -> Result<Services> {
 
     let db_user_repo = Arc::new(DbUserRepository::new(db.clone()));
     let db_file_repo = Arc::new(DbFileRepository::new(db.clone()));
+    let db_admin_repo = Arc::new(DbAdminRepository::new(db.clone()));
     let db_share_repo = DbShareRepository::new(db.clone());
     let db_log_repo = DbAccessLogRepository::new(db.clone());
 
@@ -111,7 +113,6 @@ pub async fn setup_injection() -> Result<Services> {
         Arc::clone(&create_file_usecase),
         Arc::clone(&update_file_usecase),
         Arc::clone(&find_file_by_path_usecase),
-        Arc::clone(&find_user_usecase),
         Arc::clone(&git_service),
     ));
     let list_usecase = Arc::new(crate::file::ListUseCase::new(
@@ -125,7 +126,6 @@ pub async fn setup_injection() -> Result<Services> {
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
         Arc::clone(&share_service),
         Arc::clone(&create_file_usecase),
-        Arc::clone(&find_user_usecase),
         Arc::clone(&git_service),
     ));
     let delete_usecase = Arc::new(crate::file::DeleteUseCase::new(
@@ -195,6 +195,13 @@ pub async fn setup_injection() -> Result<Services> {
             is_active: true,
         };
         create_user_usecase.execute(&dev_user).await?;
+
+        let dev_admin = DbAdmin {
+            user_id: dev_user.id,
+            access_level: "standard".to_string(),
+            last_action_at: Some(chrono::Utc::now()),
+        };
+        db_admin_repo.create(&dev_admin).await?;
 
         let dev_file = DbFileMetadata {
             id: uuid::Uuid::new_v4(),

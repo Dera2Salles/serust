@@ -1,4 +1,4 @@
-use crate::database::domain::{DbAccessLog, DbFileMetadata, DbShareGrant, DbShareLink, DbUser};
+use crate::database::domain::{DbAccessLog, DbFileMetadata, DbShareGrant, DbShareLink, DbUser, DbAdmin};
 use anyhow::Result;
 use async_trait::async_trait;
 use uuid::Uuid;
@@ -19,14 +19,14 @@ pub trait IUserRepository: Send + Sync {
 pub trait IFileDatabaseRepository: Send + Sync {
     async fn create(&self, file: &DbFileMetadata) -> Result<()>;
     async fn find_by_id(&self, id: Uuid) -> Result<Option<DbFileMetadata>>;
-    async fn find_by_storage_path(&self, path: &str) -> Result<Option<DbFileMetadata>>;
+    async fn find_by_storage_path(&self, owner_id: Uuid, path: &str) -> Result<Option<DbFileMetadata>>;
     async fn update(&self, file: &DbFileMetadata) -> Result<()>;
     async fn rename(&self, id: Uuid, new_storage_path: &str, new_filename: &str) -> Result<()>;
     async fn soft_delete(&self, id: Uuid) -> Result<()>;
     async fn restore(&self, id: Uuid) -> Result<()>;
     async fn find_deleted_by_owner(&self, owner_id: Uuid) -> Result<Vec<DbFileMetadata>>;
     async fn delete_permanently(&self, id: Uuid) -> Result<()>;
-    async fn find_by_parent_path(&self, parent_path: &str) -> Result<Vec<DbFileMetadata>>;
+    async fn find_by_parent_path(&self, owner_id: Uuid, parent_path: &str) -> Result<Vec<DbFileMetadata>>;
 }
 
 #[async_trait]
@@ -40,3 +40,14 @@ pub trait IShareDatabaseRepository: Send + Sync {
 pub trait IAccessLogRepository: Send + Sync {
     async fn create(&self, log: &DbAccessLog) -> Result<()>;
 }
+
+#[allow(dead_code)]
+#[async_trait]
+pub trait IAdminRepository: Send + Sync {
+    async fn create(&self, admin: &DbAdmin) -> Result<()>;
+    async fn find_by_user_id(&self, user_id: Uuid) -> Result<Option<DbAdmin>>;
+    async fn update_last_action(&self, user_id: Uuid) -> Result<()>;
+    async fn is_admin(&self, user_id: Uuid) -> Result<bool>;
+    async fn list_all(&self) -> Result<Vec<DbAdmin>>;
+}
+

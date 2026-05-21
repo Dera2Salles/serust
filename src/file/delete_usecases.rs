@@ -83,7 +83,7 @@ impl DeleteUseCase {
         let user_path = self.storage_root.join(&user.username);
         let _ = self.git_service.commit_file(&user_path, &resolved, &format!("Deleting file: {}", filename));
 
-        if let Ok(Some(db_meta)) = self.find_db_file.execute(&storage_path).await {
+        if let Ok(Some(db_meta)) = self.find_db_file.execute(user.id, &storage_path).await {
             self.soft_delete_db_file
                 .execute(db_meta.id)
                 .await

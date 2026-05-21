@@ -92,7 +92,7 @@ impl ListUseCase {
         let resolved = PermissionChecker::resolve_path(cwd, "");
 
         let db_parent_path = format!("/{}", resolved).trim_end_matches('/').to_string();
-        let db_entries = self.list_db_files.execute(&db_parent_path).await.unwrap_or_default();
+        let db_entries = self.list_db_files.execute(user.id, &db_parent_path).await.unwrap_or_default();
         
         if resolved.is_empty() {
             let mut filtered = Vec::new();

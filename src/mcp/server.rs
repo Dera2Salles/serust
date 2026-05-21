@@ -93,9 +93,31 @@ async fn handle_http(
         return Ok(json_response(StatusCode::OK, json!({"status": "ok"}), &cors_headers));
     }
 
+    if method == Method::GET && path == "/api/users/search" {
+        let query_val = extract_query_param(&query, "query").unwrap_or("");
+        let user_repo = crate::database::user_repository::UserRepository::new(state.db.clone());
+        return Ok(match user_repo.search_users(query_val).await {
+            Ok(users) => {
+                let list: Vec<Value> = users
+                    .into_iter()
+                    .map(|u| json!({ "username": u.username }))
+                    .collect();
+                json_response(StatusCode::OK, json!({ "users": list }), &cors_headers)
+            }
+            Err(e) => json_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({ "error": e.to_string() }),
+                &cors_headers,
+            ),
+        });
+    }
+
     if method == Method::GET && path == "/api/storage/stats" {
         let username = extract_query_param(&query, "username").unwrap_or("alice");
+        let user_repo = crate::database::user_repository::UserRepository::new(state.db.clone());
+        let db_user = user_repo.find_by_username(username).await.unwrap_or(None);
         let user = crate::user::domain::User {
+            id: db_user.map(|u| u.id).unwrap_or_else(uuid::Uuid::nil),
             username: username.to_string(),
             password_hash: String::new(),
         };
@@ -283,6 +305,7 @@ async fn handle_public_download(
     };
 
     let user_domain = crate::user::domain::User {
+        id: owner.id,
         username: owner.username.clone(),
         password_hash: owner.password_hash.clone(),
     };

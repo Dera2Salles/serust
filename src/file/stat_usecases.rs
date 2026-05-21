@@ -77,7 +77,7 @@ impl StatUseCase {
             }
         } else {
             let storage_path = format!("/{}", resolved);
-            if let Ok(Some(db_meta)) = self.find_db_file.execute(&storage_path).await {
+            if let Ok(Some(db_meta)) = self.find_db_file.execute(user.id, &storage_path).await {
                 if db_meta.is_deleted {
                     return Ok(None);
                 }
@@ -97,8 +97,20 @@ impl StatUseCase {
                 format!("/{}", resolved)
             };
 
-            if let Ok(Some(db_meta)) = self.find_db_file.execute(&storage_path).await {
-                checksum = db_meta.checksum;
+            let owner_id = if let Some((_owner, _)) = Self::parse_shared(&resolved) {
+                // For shared files, we need the owner's ID. 
+                // But v_effective_permissions view handles this better usually.
+                // For now, let's just use user.id if it's not shared, or skip if shared for simplicity
+                // since StatUseCase currently assumes finding in current user's DB entries if not shared.
+                None
+            } else {
+                Some(user.id)
+            };
+
+            if let Some(oid) = owner_id {
+                if let Ok(Some(db_meta)) = self.find_db_file.execute(oid, &storage_path).await {
+                    checksum = db_meta.checksum;
+                }
             }
         }
 

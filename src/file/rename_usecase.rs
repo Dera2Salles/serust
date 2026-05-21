@@ -73,7 +73,7 @@ impl RenameUseCase {
         let _ = self.git_service.commit_file(&user_path, &new_resolved, &format!("Renamed file (new): {}", new_name));
 
         let old_storage_path = format!("/{}", old_resolved);
-        if let Ok(Some(db_meta)) = self.find_db_file.execute(&old_storage_path).await {
+        if let Ok(Some(db_meta)) = self.find_db_file.execute(user.id, &old_storage_path).await {
             let new_filename = new_resolved
                 .split('/')
                 .last()

@@ -1,4 +1,5 @@
 pub mod access_log_repository;
+pub mod admin_repository;
 pub mod analytics_repository;
 pub mod domain;
 pub mod file_repository;

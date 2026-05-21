@@ -2,7 +2,7 @@ use crate::common::error::DomainError;
 use crate::common::permission::{Permission, PermissionChecker};
 use crate::database::domain::DbFileMetadata;
 use crate::database::file_usecases::{CreateFileUseCase, FindFileByPathUseCase, UpdateFileUseCase};
-use crate::database::user_usecases::FindUserUseCase;
+
 use crate::file::domain::FileMetadata;
 use crate::file::git_service::GitService;
 use crate::file::interfaces::IFileRepository;
@@ -24,7 +24,6 @@ pub struct UploadUseCase {
     create_db_file: Arc<CreateFileUseCase>,
     update_db_file: Arc<UpdateFileUseCase>,
     find_db_file: Arc<FindFileByPathUseCase>,
-    find_db_user: Arc<FindUserUseCase>,
     git_service: Arc<GitService>,
 }
 
@@ -36,7 +35,6 @@ impl UploadUseCase {
         create_db_file: Arc<CreateFileUseCase>,
         update_db_file: Arc<UpdateFileUseCase>,
         find_db_file: Arc<FindFileByPathUseCase>,
-        find_db_user: Arc<FindUserUseCase>,
         git_service: Arc<GitService>,
     ) -> Self {
         Self {
@@ -46,7 +44,6 @@ impl UploadUseCase {
             create_db_file,
             update_db_file,
             find_db_file,
-            find_db_user,
             git_service,
         }
     }
@@ -60,15 +57,6 @@ impl UploadUseCase {
             return None;
         }
         Some((owner, inner))
-    }
-
-    async fn get_user_id(&self, username: &str) -> Result<uuid::Uuid, DomainError> {
-        self.find_db_user
-            .execute(username)
-            .await
-            .map_err(|e| DomainError::Internal(e.to_string()))?
-            .map(|u| u.id)
-            .ok_or(DomainError::InvalidCredentials)
     }
 
     pub async fn execute(
@@ -132,12 +120,12 @@ impl UploadUseCase {
         let user_path = self.storage_root.join(&user.username);
         let _ = self.git_service.commit_file(&user_path, &resolved, &format!("Uploaded file: {}", filename));
 
-        let owner_id = self.get_user_id(&user.username).await?;
+        let owner_id = user.id;
         let storage_path = format!("/{}", resolved);
 
         let existing = self
             .find_db_file
-            .execute(&storage_path)
+            .execute(user.id, &storage_path)
             .await
             .ok()
             .flatten();

@@ -55,8 +55,8 @@ impl FindFileByPathUseCase {
         Self { repo }
     }
 
-    pub async fn execute(&self, path: &str) -> Result<Option<DbFileMetadata>> {
-        self.repo.find_by_storage_path(path).await
+    pub async fn execute(&self, owner_id: Uuid, path: &str) -> Result<Option<DbFileMetadata>> {
+        self.repo.find_by_storage_path(owner_id, path).await
     }
 }
 
@@ -102,7 +102,7 @@ impl ListFilesByParentUseCase {
         Self { repo }
     }
 
-    pub async fn execute(&self, parent_path: &str) -> Result<Vec<DbFileMetadata>> {
-        self.repo.find_by_parent_path(parent_path).await
+    pub async fn execute(&self, owner_id: Uuid, parent_path: &str) -> Result<Vec<DbFileMetadata>> {
+        self.repo.find_by_parent_path(owner_id, parent_path).await
     }
 }

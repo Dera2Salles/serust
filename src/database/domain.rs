@@ -13,6 +13,13 @@ pub struct DbUser {
     pub is_active: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DbAdmin {
+    pub user_id: Uuid,
+    pub access_level: String,
+    pub last_action_at: Option<DateTime<Utc>>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DbFileMetadata {
     pub id: Uuid,
