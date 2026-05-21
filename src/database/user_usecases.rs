@@ -30,3 +30,17 @@ impl FindUserUseCase {
         self.repo.find_by_username(username).await
     }
 }
+
+pub struct FindUserByEmailUseCase {
+    repo: Arc<dyn IUserRepository>,
+}
+
+impl FindUserByEmailUseCase {
+    pub fn new(repo: Arc<dyn IUserRepository>) -> Self {
+        Self { repo }
+    }
+
+    pub async fn execute(&self, email: &str) -> Result<Option<DbUser>> {
+        self.repo.find_by_email(email).await
+    }
+}

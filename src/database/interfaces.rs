@@ -7,6 +7,7 @@ use uuid::Uuid;
 pub trait IUserRepository: Send + Sync {
     async fn create(&self, user: &DbUser) -> Result<()>;
     async fn find_by_username(&self, username: &str) -> Result<Option<DbUser>>;
+    async fn find_by_email(&self, email: &str) -> Result<Option<DbUser>>;
     async fn find_by_id(&self, id: Uuid) -> Result<Option<DbUser>>;
     async fn search_users(&self, query: &str) -> Result<Vec<DbUser>>;
     async fn update(&self, user: &DbUser) -> Result<()>;

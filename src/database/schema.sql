@@ -3,7 +3,11 @@ CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY, 
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
-    email TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    first_name TEXT,
+    last_name TEXT,
+    birth_date TEXT,
+    location TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     storage_quota_bytes INTEGER NOT NULL DEFAULT 0,
     is_active BOOLEAN NOT NULL DEFAULT 1

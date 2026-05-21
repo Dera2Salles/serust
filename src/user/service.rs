@@ -1,6 +1,6 @@
 use crate::common::error::DomainError;
 use crate::database::domain::DbUser;
-use crate::database::user_usecases::{CreateUserUseCase, FindUserUseCase};
+use crate::database::user_usecases::{CreateUserUseCase, FindUserByEmailUseCase};
 use crate::user::domain::User;
 use chrono::Utc;
 use sha2::{Digest, Sha256};
@@ -8,14 +8,17 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 pub struct AuthService {
-    find_user: Arc<FindUserUseCase>,
+    find_user_by_email: Arc<FindUserByEmailUseCase>,
     create_user: Arc<CreateUserUseCase>,
 }
 
 impl AuthService {
-    pub fn new(find_user: Arc<FindUserUseCase>, create_user: Arc<CreateUserUseCase>) -> Self {
+    pub fn new(
+        find_user_by_email: Arc<FindUserByEmailUseCase>,
+        create_user: Arc<CreateUserUseCase>,
+    ) -> Self {
         Self {
-            find_user,
+            find_user_by_email,
             create_user,
         }
     }
@@ -26,9 +29,9 @@ impl AuthService {
         hex::encode(hasher.finalize())
     }
 
-    pub async fn login(&self, username: &str, password: &str) -> Result<User, DomainError> {
+    pub async fn login(&self, email: &str, password: &str) -> Result<User, DomainError> {
         let hash = Self::hash_password(password);
-        match self.find_user.execute(username).await {
+        match self.find_user_by_email.execute(email).await {
             Ok(Some(db_user)) if db_user.password_hash == hash => Ok(User {
                 id: db_user.id,
                 username: db_user.username,
@@ -38,13 +41,26 @@ impl AuthService {
         }
     }
 
-    pub async fn register(&self, username: &str, password: &str) -> Result<(), DomainError> {
+    pub async fn register(
+        &self,
+        username: &str,
+        email: &str,
+        password: &str,
+        first_name: Option<String>,
+        last_name: Option<String>,
+        birth_date: Option<String>,
+        location: Option<String>,
+    ) -> Result<(), DomainError> {
         let hash = Self::hash_password(password);
         let dev_user = DbUser {
             id: Uuid::new_v4(),
             username: username.to_string(),
             password_hash: hash,
-            email: "".to_string(),
+            email: email.to_string(),
+            first_name,
+            last_name,
+            birth_date,
+            location,
             created_at: Utc::now(),
             storage_quota_bytes: 0,
             is_active: true,

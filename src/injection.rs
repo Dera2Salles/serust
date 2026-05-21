@@ -15,7 +15,7 @@ use crate::database::{
     share_repository::ShareRepository as DbShareRepository,
     share_usecases::{CreateGrantUseCase, CreateLinkUseCase},
     user_repository::UserRepository as DbUserRepository,
-    user_usecases::{CreateUserUseCase, FindUserUseCase},
+    user_usecases::{CreateUserUseCase, FindUserByEmailUseCase, FindUserUseCase},
     Database,
 };
 use crate::file::compression_service::CompressionService;
@@ -61,6 +61,9 @@ pub async fn setup_injection() -> Result<Services> {
     let find_user_usecase = Arc::new(FindUserUseCase::new(
         Arc::clone(&db_user_repo) as Arc<dyn IUserRepository>,
     ));
+    let find_user_by_email_usecase = Arc::new(FindUserByEmailUseCase::new(
+        Arc::clone(&db_user_repo) as Arc<dyn IUserRepository>,
+    ));
     let create_file_usecase = Arc::new(CreateFileUseCase::new(
         Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>,
     ));
@@ -94,7 +97,7 @@ pub async fn setup_injection() -> Result<Services> {
     ));
 
     let auth_service = Arc::new(AuthService::new(
-        Arc::clone(&find_user_usecase),
+        Arc::clone(&find_user_by_email_usecase),
         Arc::clone(&create_user_usecase),
     ));
     let share_service = Arc::new(ShareService::new(Arc::clone(&share_repo)));
@@ -177,7 +180,7 @@ pub async fn setup_injection() -> Result<Services> {
         ("developer", "dev123"),
         ("dera", "dera123"),
     ] {
-        let _ = auth_service.register(name, pass).await;
+        let _ = auth_service.register(name, &format!("{}@local", name), pass, None, None, None, None).await;
         let user_path = storage_root.join(name);
         let _ = git_service.setup_s3_remote(&user_path, &bucket, name);
         info!("Utilisateur prêt avec remote S3 : {}", name);
@@ -190,6 +193,10 @@ pub async fn setup_injection() -> Result<Services> {
             username: admin_username.to_string(),
             password_hash: AuthService::hash_password("admin123"),
             email: "admin@local".to_string(),
+            first_name: Some("Admin".into()),
+            last_name: Some("User".into()),
+            birth_date: None,
+            location: None,
             created_at: chrono::Utc::now(),
             storage_quota_bytes: 1048576,
             is_active: true,
