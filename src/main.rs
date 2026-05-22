@@ -42,6 +42,7 @@ async fn main() -> anyhow::Result<()> {
     let mcp_state = Arc::new(McpServerState {
         registry: Arc::clone(&mcp_registry),
         file_service: Arc::clone(&file_service),
+        auth_service: Arc::clone(&auth_service),
         db: db.clone(),
     });
     tokio::spawn(async move {

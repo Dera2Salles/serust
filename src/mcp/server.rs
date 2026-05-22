@@ -21,6 +21,7 @@ pub struct McpServerState {
     pub registry: Arc<McpRegistry>,
     #[allow(dead_code)]
     pub file_service: Arc<FileService>,
+    pub auth_service: Arc<crate::user::service::AuthService>,
     pub db: Database,
 }
 
@@ -179,6 +180,68 @@ async fn handle_http(
             _ => json_response(
                 StatusCode::NOT_FOUND,
                 json!({"error": "Not found"}),
+                &cors_headers,
+            ),
+        });
+    }
+
+    if method == Method::POST && path == "/api/auth/register" {
+        let body_bytes = match req.collect().await {
+            Ok(b) => b.to_bytes(),
+            Err(e) => {
+                error!("Failed to read registration body: {}", e);
+                return Ok(json_response(
+                    StatusCode::BAD_REQUEST,
+                    json!({ "error": "Failed to read body" }),
+                    &cors_headers,
+                ));
+            }
+        };
+
+        let reg_data: Value = match serde_json::from_slice(&body_bytes) {
+            Ok(v) => v,
+            Err(e) => {
+                return Ok(json_response(
+                    StatusCode::BAD_REQUEST,
+                    json!({ "error": format!("Invalid JSON: {}", e) }),
+                    &cors_headers,
+                ));
+            }
+        };
+
+        let username = reg_data["username"].as_str().unwrap_or("");
+        let email = reg_data["email"].as_str().unwrap_or("");
+        let password = reg_data["password"].as_str().unwrap_or("");
+        let first_name = reg_data["first_name"].as_str().map(|s| s.to_string());
+        let last_name = reg_data["last_name"].as_str().map(|s| s.to_string());
+        let birth_date = reg_data["birth_date"].as_str().map(|s| s.to_string());
+        let location = reg_data["location"].as_str().map(|s| s.to_string());
+
+        if username.is_empty() || email.is_empty() || password.is_empty() {
+            return Ok(json_response(
+                StatusCode::BAD_REQUEST,
+                json!({ "error": "Username, email, and password are required" }),
+                &cors_headers,
+            ));
+        }
+
+        return Ok(match state
+            .auth_service
+            .register(
+                username,
+                email,
+                password,
+                first_name,
+                last_name,
+                birth_date,
+                location,
+            )
+            .await
+        {
+            Ok(_) => json_response(StatusCode::CREATED, json!({ "status": "ok" }), &cors_headers),
+            Err(e) => json_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({ "error": e.to_string() }),
                 &cors_headers,
             ),
         });
