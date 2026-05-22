@@ -36,6 +36,11 @@ impl AuthService {
                 id: db_user.id,
                 username: db_user.username,
                 password_hash: db_user.password_hash,
+                email: db_user.email,
+                first_name: db_user.first_name,
+                last_name: db_user.last_name,
+                birth_date: db_user.birth_date,
+                location: db_user.location,
             }),
             _ => Err(DomainError::InvalidCredentials),
         }

@@ -118,9 +118,14 @@ async fn handle_http(
         let user_repo = crate::database::user_repository::UserRepository::new(state.db.clone());
         let db_user = user_repo.find_by_username(username).await.unwrap_or(None);
         let user = crate::user::domain::User {
-            id: db_user.map(|u| u.id).unwrap_or_else(uuid::Uuid::nil),
+            id: db_user.as_ref().map(|u| u.id).unwrap_or_else(uuid::Uuid::nil),
             username: username.to_string(),
             password_hash: String::new(),
+            email: db_user.map(|u| u.email).unwrap_or_default(),
+            first_name: None,
+            last_name: None,
+            birth_date: None,
+            location: None,
         };
         let (total_bytes, file_count, dir_count) = state.registry.recursive_stats(&user, "/").await;
         return Ok(json_response(
@@ -242,6 +247,43 @@ async fn handle_http(
             Err(e) => json_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 json!({ "error": e.to_string() }),
+                &cors_headers,
+            ),
+        });
+    }
+
+    if method == Method::POST && path == "/api/auth/login" {
+        let body_bytes = match req.collect().await {
+            Ok(b) => b.to_bytes(),
+            Err(e) => {
+                error!("Failed to read login body: {}", e);
+                return Ok(json_response(
+                    StatusCode::BAD_REQUEST,
+                    json!({ "error": "Failed to read body" }),
+                    &cors_headers,
+                ));
+            }
+        };
+
+        let login_data: Value = match serde_json::from_slice(&body_bytes) {
+            Ok(v) => v,
+            Err(_) => {
+                return Ok(json_response(
+                    StatusCode::BAD_REQUEST,
+                    json!({ "error": "Invalid JSON" }),
+                    &cors_headers,
+                ));
+            }
+        };
+
+        let email = login_data["email"].as_str().unwrap_or("");
+        let password = login_data["password"].as_str().unwrap_or("");
+
+        return Ok(match state.auth_service.login(email, password).await {
+            Ok(user) => json_response(StatusCode::OK, json!(user), &cors_headers),
+            Err(_) => json_response(
+                StatusCode::UNAUTHORIZED,
+                json!({ "error": "Invalid credentials" }),
                 &cors_headers,
             ),
         });
@@ -371,6 +413,11 @@ async fn handle_public_download(
         id: owner.id,
         username: owner.username.clone(),
         password_hash: owner.password_hash.clone(),
+        email: owner.email.clone(),
+        first_name: owner.first_name.clone(),
+        last_name: owner.last_name.clone(),
+        birth_date: owner.birth_date.clone(),
+        location: owner.location.clone(),
     };
 
     let data = match state

@@ -477,10 +477,28 @@ impl McpRegistry {
 
     async fn make_user(&self, username: &str) -> User {
         let db_user = self.user_repo.find_by_username(username).await.unwrap_or(None);
-        User {
-            id: db_user.map(|u| u.id).unwrap_or_else(uuid::Uuid::nil),
-            username: username.to_string(),
-            password_hash: String::new(),
+        if let Some(u) = db_user {
+            User {
+                id: u.id,
+                username: u.username,
+                password_hash: u.password_hash,
+                email: u.email,
+                first_name: u.first_name,
+                last_name: u.last_name,
+                birth_date: u.birth_date,
+                location: u.location,
+            }
+        } else {
+            User {
+                id: uuid::Uuid::nil(),
+                username: username.to_string(),
+                password_hash: String::new(),
+                email: String::new(),
+                first_name: None,
+                last_name: None,
+                birth_date: None,
+                location: None,
+            }
         }
     }
 
