@@ -514,7 +514,12 @@ impl McpRegistry {
     }
 
     async fn make_user(&self, username: &str) -> User {
-        let db_user = self.user_repo.find_by_username(username).await.unwrap_or(None);
+        let db_user = if username.contains('@') {
+            self.user_repo.find_by_email(username).await.unwrap_or(None)
+        } else {
+            self.user_repo.find_by_username(username).await.unwrap_or(None)
+        };
+
         if let Some(u) = db_user {
             User {
                 id: u.id,
