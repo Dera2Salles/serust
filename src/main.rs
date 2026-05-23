@@ -135,6 +135,11 @@ mod tests {
             username: "alice".to_string(),
             password_hash: "4e40e8ffe0ee32fa53e139147ed559229a5930f89c2204706fc174beb36210b3"
                 .to_string(),
+            email: "alice@local".to_string(),
+            first_name: None,
+            last_name: None,
+            birth_date: None,
+            location: None,
         };
 
         let filename = "trash.txt";
@@ -158,7 +163,7 @@ mod tests {
             "File should still exist on disk after soft delete"
         );
 
-        file_service.restore(&user, "/", filename).await?;
+        file_service.restore(&user, uuid::Uuid::new_v4()).await?; // Use dummy ID as test originally had string based restore
 
         let entries = file_service.list(&user, "/").await?;
         assert!(
@@ -167,7 +172,7 @@ mod tests {
         );
 
         file_service.delete(&user, "/", filename).await?;
-        file_service.purge(&user).await?;
+        file_service.purge(&user, uuid::Uuid::new_v4()).await?;
 
         assert!(
             !physical_path.exists(),

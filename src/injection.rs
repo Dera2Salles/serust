@@ -7,6 +7,8 @@ use crate::database::{
         CreateFileUseCase, FindFileByPathUseCase, FindFileUseCase,
         RenameFileDbUseCase,
         SoftDeleteFileDbUseCase, UpdateFileUseCase,
+        RestoreFileDbUseCase, DeletePermanentlyDbUseCase, FindDeletedFilesDbUseCase,
+        DeleteByPathPrefixDbUseCase,
     },
     interfaces::{
         IAccessLogRepository, IFileDatabaseRepository, IShareDatabaseRepository, IUserRepository, IAdminRepository,
@@ -82,6 +84,18 @@ pub async fn setup_injection() -> Result<Services> {
     let soft_delete_db_file_usecase = Arc::new(SoftDeleteFileDbUseCase::new(
         Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>,
     ));
+    let restore_db_file_usecase = Arc::new(RestoreFileDbUseCase::new(
+        Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>,
+    ));
+    let delete_permanently_db_file_usecase = Arc::new(DeletePermanentlyDbUseCase::new(
+        Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>,
+    ));
+    let delete_by_path_prefix_db_usecase = Arc::new(DeleteByPathPrefixDbUseCase::new(
+        Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>,
+    ));
+    let find_deleted_files_db_usecase = Arc::new(FindDeletedFilesDbUseCase::new(
+        Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>,
+    ));
 
     let list_files_by_parent_usecase = Arc::new(crate::database::file_usecases::ListFilesByParentUseCase::new(
         Arc::clone(&db_file_repo) as Arc<dyn IFileDatabaseRepository>,
@@ -129,6 +143,7 @@ pub async fn setup_injection() -> Result<Services> {
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
         Arc::clone(&share_service),
         Arc::clone(&create_file_usecase),
+        Arc::clone(&find_file_by_path_usecase),
         Arc::clone(&git_service),
     ));
     let delete_usecase = Arc::new(crate::file::DeleteUseCase::new(
@@ -136,6 +151,7 @@ pub async fn setup_injection() -> Result<Services> {
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
         Arc::clone(&share_service),
         Arc::clone(&find_file_by_path_usecase),
+        Arc::clone(&create_file_usecase),
         Arc::clone(&soft_delete_db_file_usecase),
         Arc::clone(&git_service),
     ));
@@ -151,11 +167,16 @@ pub async fn setup_injection() -> Result<Services> {
         Arc::clone(&rename_db_file_usecase),
         Arc::clone(&git_service),
     ));
-    let rmdir_usecase = Arc::new(crate::file::RemoveDirUseCase::new(
-        storage_root.clone(),
-        Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
-        Arc::clone(&git_service),
+    let restore_usecase = Arc::new(crate::file::RestoreUseCase::new(
+        Arc::clone(&restore_db_file_usecase),
     ));
+    let purge_usecase = Arc::new(crate::file::PurgeUseCase::new(
+        Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
+        Arc::clone(&find_file_usecase),
+        Arc::clone(&delete_permanently_db_file_usecase),
+        Arc::clone(&delete_by_path_prefix_db_usecase),
+    ));
+
     let file_service = Arc::new(FileService::new(
         storage_root.clone(),
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
@@ -166,7 +187,9 @@ pub async fn setup_injection() -> Result<Services> {
         delete_usecase,
         stat_usecase,
         rename_usecase,
-        rmdir_usecase,
+        restore_usecase,
+        purge_usecase,
+        find_deleted_files_db_usecase,
         git_service.clone(),
         compression_service,
     ));

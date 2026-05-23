@@ -91,27 +91,11 @@ impl ListUseCase {
     ) -> Result<Vec<(String, bool)>, DomainError> {
         let resolved = PermissionChecker::resolve_path(cwd, "");
 
-        let db_parent_path = format!("/{}", resolved).trim_end_matches('/').to_string();
-        let db_entries = self.list_db_files.execute(user.id, &db_parent_path).await.unwrap_or_default();
-        
-        if resolved.is_empty() {
-            let mut filtered = Vec::new();
-            for meta in db_entries {
-                if meta.is_deleted { continue; }
-                let is_dir = meta.mime_type.as_deref() == Some("inode/directory");
-                filtered.push((meta.filename, is_dir));
-            }
-
-            if !filtered.iter().any(|(n, is_dir)| n == "shared" && *is_dir) {
-                filtered.push(("shared".to_string(), true));
-            }
-            filtered.sort_by(|a, b| a.0.cmp(&b.0));
-            return Ok(filtered);
-        }
-
         if resolved == "shared" {
             let owners = self.shares.owners_shared_with(&user.username).await;
-            return Ok(owners.into_iter().map(|o| (o, true)).collect());
+            let mut res: Vec<(String, bool)> = owners.into_iter().map(|o| (o, true)).collect();
+            res.sort();
+            return Ok(res);
         }
 
         if let Some((owner, inner)) = Self::parse_shared(&resolved) {
@@ -138,17 +122,26 @@ impl ListUseCase {
             return Ok(children);
         }
 
-        let mut filtered = Vec::new();
-        for meta in db_entries {
-            if meta.is_deleted { continue; }
-            let is_dir = meta.mime_type.as_deref() == Some("inode/directory");
-            filtered.push((meta.filename, is_dir));
-        }
+        // 1. List everything from disk
+        let disk_entries = self.file_repo.list_entries(&user.username, &resolved).await?;
         
-        if filtered.is_empty() {
-            let entries = self.file_repo.list_entries(&user.username, &resolved).await?;
-            for (name, is_dir) in entries {
+        // 2. Get metadata from DB for this parent path to check for deleted files
+        let db_parent_path = format!("/{}", resolved).trim_end_matches('/').to_string();
+        let db_entries = self.list_db_files.execute(user.id, &db_parent_path).await.unwrap_or_default();
+        
+        let mut filtered = Vec::new();
+        for (name, is_dir) in disk_entries {
+            // Check if this specific entry is marked as deleted in DB
+            let is_deleted = db_entries.iter().any(|meta| meta.filename == name && meta.is_deleted);
+            if !is_deleted {
                 filtered.push((name, is_dir));
+            }
+        }
+
+        // 3. Add virtual folders if at root
+        if resolved.is_empty() {
+            if !filtered.iter().any(|(n, is_dir)| n == "shared" && *is_dir) {
+                filtered.push(("shared".to_string(), true));
             }
         }
 

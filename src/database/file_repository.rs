@@ -175,6 +175,24 @@ impl IFileDatabaseRepository for FileRepository {
         }
         Ok(results)
     }
+
+    async fn delete_by_path_prefix(&self, owner_id: Uuid, path_prefix: &str) -> Result<()> {
+        let pattern = if path_prefix.ends_with('/') {
+            format!("{}%", path_prefix)
+        } else {
+            format!("{}/%", path_prefix)
+        };
+        let owner_str = owner_id.to_string();
+
+        sqlx::query("DELETE FROM files WHERE owner_id = ? AND (storage_path = ? OR storage_path LIKE ?)")
+            .bind(&owner_str)
+            .bind(path_prefix)
+            .bind(&pattern)
+            .execute(&*self.db.pool)
+            .await?;
+
+        Ok(())
+    }
 }
 
 impl FileRepository {

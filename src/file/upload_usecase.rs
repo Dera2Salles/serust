@@ -59,6 +59,51 @@ impl UploadUseCase {
         Some((owner, inner))
     }
 
+    async fn ensure_db_parents(&self, user: &User, path: &str) -> Result<(), DomainError> {
+        let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+        // If it's a file, we don't want to create a dir record for the filename itself here.
+        // But path passed to this might be the full file path.
+        // Let's assume we want to ensure parents of the path.
+        let mut current_path = String::new();
+
+        // We iterate up to len() - 1 if it's a file upload path.
+        // Actually, if it's a file upload, the last segment is the filename.
+        let count = segments.len();
+        if count <= 1 {
+            return Ok(());
+        }
+
+        for i in 0..(count - 1) {
+            let segment = segments[i];
+            current_path.push_str("/");
+            current_path.push_str(segment);
+
+            let existing = self
+                .find_db_file
+                .execute(user.id, &current_path)
+                .await
+                .ok()
+                .flatten();
+
+            if existing.is_none() {
+                let db_entry = DbFileMetadata {
+                    id: uuid::Uuid::new_v4(),
+                    owner_id: user.id,
+                    filename: segment.to_string(),
+                    storage_path: current_path.clone(),
+                    size_bytes: 0,
+                    mime_type: Some("inode/directory".into()),
+                    checksum: None,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                    is_deleted: false,
+                };
+                let _ = self.create_db_file.execute(&db_entry).await;
+            }
+        }
+        Ok(())
+    }
+
     pub async fn execute(
         &self,
         user: &User,
@@ -119,6 +164,8 @@ impl UploadUseCase {
 
         let user_path = self.storage_root.join(&user.username);
         let _ = self.git_service.commit_file(&user_path, &resolved, &format!("Uploaded file: {}", filename));
+
+        self.ensure_db_parents(user, &resolved).await?;
 
         let owner_id = user.id;
         let storage_path = format!("/{}", resolved);

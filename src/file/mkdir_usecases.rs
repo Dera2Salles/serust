@@ -1,7 +1,7 @@
 use crate::common::error::DomainError;
 use crate::common::permission::{Permission, PermissionChecker};
 use crate::database::domain::DbFileMetadata;
-use crate::database::file_usecases::CreateFileUseCase;
+use crate::database::file_usecases::{CreateFileUseCase, FindFileByPathUseCase};
 
 use crate::file::git_service::GitService;
 use crate::file::interfaces::IFileRepository;
@@ -15,6 +15,7 @@ pub struct MkdirUseCase {
     file_repo: Arc<dyn IFileRepository>,
     shares: Arc<ShareService>,
     create_db_file: Arc<CreateFileUseCase>,
+    find_db_file: Arc<FindFileByPathUseCase>,
     git_service: Arc<GitService>,
 }
 
@@ -24,6 +25,7 @@ impl MkdirUseCase {
         file_repo: Arc<dyn IFileRepository>,
         shares: Arc<ShareService>,
         create_db_file: Arc<CreateFileUseCase>,
+        find_db_file: Arc<FindFileByPathUseCase>,
         git_service: Arc<GitService>,
     ) -> Self {
         Self {
@@ -31,6 +33,7 @@ impl MkdirUseCase {
             file_repo,
             shares,
             create_db_file,
+            find_db_file,
             git_service,
         }
     }
@@ -44,6 +47,40 @@ impl MkdirUseCase {
             return None;
         }
         Some((owner, inner))
+    }
+
+    async fn ensure_db_parents(&self, user: &User, path: &str) -> Result<(), DomainError> {
+        let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+        let mut current_path = String::new();
+
+        for segment in segments {
+            current_path.push_str("/");
+            current_path.push_str(segment);
+
+            let existing = self
+                .find_db_file
+                .execute(user.id, &current_path)
+                .await
+                .ok()
+                .flatten();
+
+            if existing.is_none() {
+                let db_entry = DbFileMetadata {
+                    id: uuid::Uuid::new_v4(),
+                    owner_id: user.id,
+                    filename: segment.to_string(),
+                    storage_path: current_path.clone(),
+                    size_bytes: 0,
+                    mime_type: Some("inode/directory".into()),
+                    checksum: None,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                    is_deleted: false,
+                };
+                let _ = self.create_db_file.execute(&db_entry).await;
+            }
+        }
+        Ok(())
     }
 
     pub async fn execute(&self, user: &User, cwd: &str, dirname: &str) -> Result<(), DomainError> {
@@ -83,20 +120,7 @@ impl MkdirUseCase {
         let user_path = self.storage_root.join(&user.username);
         let _ = self.git_service.commit_file(&user_path, &resolved, &format!("Created folder: {}", dirname));
 
-        let owner_id = user.id;
-        let db_entry = DbFileMetadata {
-            id: uuid::Uuid::new_v4(),
-            owner_id,
-            filename: dirname.to_string(),
-            storage_path: format!("/{}", resolved),
-            size_bytes: 0,
-            mime_type: Some("inode/directory".into()),
-            checksum: None,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            is_deleted: false,
-        };
-        let _ = self.create_db_file.execute(&db_entry).await;
+        self.ensure_db_parents(user, &resolved).await?;
 
         Ok(())
     }

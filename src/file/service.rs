@@ -4,8 +4,10 @@ use crate::file::git_service::GitService;
 use crate::file::interfaces::IFileRepository;
 use crate::file::{
     DeleteUseCase, DownloadUseCase, ListUseCase, MkdirUseCase,
-    RemoveDirUseCase, RenameUseCase, StatUseCase, UploadUseCase,
+    RenameUseCase, StatUseCase, UploadUseCase,
+    RestoreUseCase, PurgeUseCase,
 };
+use crate::database::file_usecases::FindDeletedFilesDbUseCase;
 use crate::user::domain::User;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -20,7 +22,9 @@ pub struct FileService {
     delete: Arc<DeleteUseCase>,
     stat: Arc<StatUseCase>,
     rename: Arc<RenameUseCase>,
-    rmdir: Arc<RemoveDirUseCase>,
+    restore: Arc<RestoreUseCase>,
+    purge: Arc<PurgeUseCase>,
+    find_deleted: Arc<FindDeletedFilesDbUseCase>,
 
     pub git: Arc<GitService>,
     pub compression: Arc<CompressionService>,
@@ -37,7 +41,9 @@ impl FileService {
         delete: Arc<DeleteUseCase>,
         stat: Arc<StatUseCase>,
         rename: Arc<RenameUseCase>,
-        rmdir: Arc<RemoveDirUseCase>,
+        restore: Arc<RestoreUseCase>,
+        purge: Arc<PurgeUseCase>,
+        find_deleted: Arc<FindDeletedFilesDbUseCase>,
 
         git: Arc<GitService>,
         compression: Arc<CompressionService>,
@@ -52,7 +58,9 @@ impl FileService {
             delete,
             stat,
             rename,
-            rmdir,
+            restore,
+            purge,
+            find_deleted,
 
             git,
             compression,
@@ -177,11 +185,18 @@ impl FileService {
         self.rename.execute(user, cwd, old_name, new_name).await
     }
 
-    pub async fn rmdir(&self, user: &User, cwd: &str, dirname: &str) -> Result<(), DomainError> {
-        self.rmdir.execute(user, cwd, dirname).await
+    pub async fn restore(&self, user: &User, id: uuid::Uuid) -> Result<(), DomainError> {
+        self.restore.execute(user, id).await
     }
 
+    pub async fn purge(&self, user: &User, id: uuid::Uuid) -> Result<(), DomainError> {
+        self.purge.execute(user, id).await
+    }
 
+    pub async fn list_deleted(&self, user: &User) -> Result<Vec<crate::database::domain::DbFileMetadata>, DomainError> {
+        self.find_deleted.execute(user.id).await
+            .map_err(|e| DomainError::Internal(e.to_string()))
+    }
 
     pub async fn get_reader(
         &self,

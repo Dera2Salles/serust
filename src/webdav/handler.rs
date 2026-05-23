@@ -412,31 +412,21 @@ async fn handle_delete(
     path: &str,
     files: Arc<FileService>,
 ) -> Result<WebDavResponse, BoxError> {
-    let stat = files.stat(user, "/", path).await;
-    match stat {
-        Ok(Some((_, is_dir, _))) => {
-            let result = if is_dir {
-                files.rmdir(user, "/", path).await
-            } else {
-                files.delete(user, "/", path).await
-            };
-
-            match result {
-                Ok(_) => {
-                    let mut res = Response::new(Full::new(Bytes::new()));
-                    *res.status_mut() = StatusCode::NO_CONTENT;
-                    Ok(res)
-                }
-                Err(_) => {
-                    let mut res = Response::new(Full::new(Bytes::from("Internal Server Error")));
-                    *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-                    Ok(res)
-                }
-            }
+    match files.delete(user, "/", path).await {
+        Ok(_) => {
+            let mut res = Response::new(Full::new(Bytes::new()));
+            *res.status_mut() = StatusCode::NO_CONTENT;
+            Ok(res)
         }
-        _ => {
+        Err(DomainError::FileNotFound) => {
             let mut res = Response::new(Full::new(Bytes::from("Not Found")));
             *res.status_mut() = StatusCode::NOT_FOUND;
+            Ok(res)
+        }
+        Err(e) => {
+            error!("DELETE failed: {:?}", e);
+            let mut res = Response::new(Full::new(Bytes::from("Internal Server Error")));
+            *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
             Ok(res)
         }
     }

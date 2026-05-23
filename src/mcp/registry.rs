@@ -80,7 +80,7 @@ impl McpRegistry {
             },
             McpTool {
                 name: "delete_file".into(),
-                description: "Delete a file from the FTP server.".into(),
+                description: "Soft delete a file (moves to recycle bin).".into(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
@@ -89,6 +89,41 @@ impl McpRegistry {
                         "filename": { "type": "string", "description": "Name of the file to delete" }
                     },
                     "required": ["username", "path", "filename"]
+                }),
+            },
+            McpTool {
+                name: "list_deleted_files".into(),
+                description: "List files in the user's recycle bin.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "username": { "type": "string", "description": "Authenticated username" }
+                    },
+                    "required": ["username"]
+                }),
+            },
+            McpTool {
+                name: "restore_file".into(),
+                description: "Restore a file from the recycle bin.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "username": { "type": "string", "description": "Authenticated username" },
+                        "id": { "type": "string", "description": "Database ID of the file to restore" }
+                    },
+                    "required": ["username", "id"]
+                }),
+            },
+            McpTool {
+                name: "purge_file".into(),
+                description: "Permanently delete a file from the disk and database.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "username": { "type": "string", "description": "Authenticated username" },
+                        "id": { "type": "string", "description": "Database ID of the file to purge" }
+                    },
+                    "required": ["username", "id"]
                 }),
             },
             McpTool {
@@ -293,6 +328,9 @@ impl McpRegistry {
             "create_folder" => self.tool_create_folder(args).await,
             "create_file" => self.tool_create_file(args).await,
             "delete_file" => self.tool_delete_file(args).await,
+            "list_deleted_files" => self.tool_list_deleted_files(args).await,
+            "restore_file" => self.tool_restore_file(args).await,
+            "purge_file" => self.tool_purge_file(args).await,
             "search_files" => self.tool_search_files(args).await,
             "rename_file" => self.tool_rename_file(args).await,
             "move_file" => self.tool_move_file(args).await,
@@ -1081,6 +1119,79 @@ impl McpRegistry {
         let user = self.make_user(username).await;
         match self.file_service.decompress(&user, path, filename).await {
             Ok(_) => McpToolResult::success(format!("Successfully decompressed: {}", filename)),
+            Err(e) => McpToolResult::error(format!("Error: {}", e)),
+        }
+    }
+
+    async fn tool_list_deleted_files(&self, args: &Value) -> McpToolResult {
+        let username = match Self::get_str(args, "username") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+
+        let user = self.make_user(username).await;
+        match self.file_service.list_deleted(&user).await {
+            Ok(files) => {
+                let list: Vec<Value> = files
+                    .into_iter()
+                    .map(|f| {
+                        let is_dir = f
+                            .mime_type
+                            .as_ref()
+                            .map_or(false, |m| m.contains("directory"));
+                        json!({
+                            "id": f.id,
+                            "filename": f.filename,
+                            "size": f.size_bytes,
+                            "deleted_at": f.updated_at,
+                            "is_dir": is_dir,
+                        })
+                    })
+                    .collect();
+                McpToolResult::success(json!({ "files": list }).to_string())
+            }
+            Err(e) => McpToolResult::error(format!("Error: {}", e)),
+        }
+    }
+
+    async fn tool_restore_file(&self, args: &Value) -> McpToolResult {
+        let username = match Self::get_str(args, "username") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let id_str = match Self::get_str(args, "id") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let id = match uuid::Uuid::parse_str(id_str) {
+            Ok(v) => v,
+            Err(_) => return McpToolResult::error("Invalid UUID format"),
+        };
+
+        let user = self.make_user(username).await;
+        match self.file_service.restore(&user, id).await {
+            Ok(_) => McpToolResult::success("File restored successfully."),
+            Err(e) => McpToolResult::error(format!("Error: {}", e)),
+        }
+    }
+
+    async fn tool_purge_file(&self, args: &Value) -> McpToolResult {
+        let username = match Self::get_str(args, "username") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let id_str = match Self::get_str(args, "id") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let id = match uuid::Uuid::parse_str(id_str) {
+            Ok(v) => v,
+            Err(_) => return McpToolResult::error("Invalid UUID format"),
+        };
+
+        let user = self.make_user(username).await;
+        match self.file_service.purge(&user, id).await {
+            Ok(_) => McpToolResult::success("File permanently deleted."),
             Err(e) => McpToolResult::error(format!("Error: {}", e)),
         }
     }
