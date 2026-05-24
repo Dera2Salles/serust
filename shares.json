@@ -40,5 +40,47 @@
     "can_reshare": false,
     "granted_by": "jhon",
     "expires_at": null
+  },
+  {
+    "owner": "dera.ah.14",
+    "path": "shared/jhon/Présentation.md",
+    "grantee": "dera",
+    "can_read": true,
+    "can_write": false,
+    "can_download": false,
+    "remaining_reads": null,
+    "remaining_writes": null,
+    "remaining_downloads": null,
+    "can_reshare": false,
+    "granted_by": "dera.ah.14",
+    "expires_at": null
+  },
+  {
+    "owner": "dera.ah.14",
+    "path": "vaovao/Screenshot_20260524_092322.jpg",
+    "grantee": "dera",
+    "can_read": true,
+    "can_write": false,
+    "can_download": true,
+    "remaining_reads": null,
+    "remaining_writes": null,
+    "remaining_downloads": null,
+    "can_reshare": false,
+    "granted_by": "dera.ah.14",
+    "expires_at": 1779656400
+  },
+  {
+    "owner": "dera.ah.14",
+    "path": "vaovao/Screenshot_20260524_092322.jpg",
+    "grantee": "jhon",
+    "can_read": true,
+    "can_write": false,
+    "can_download": true,
+    "remaining_reads": null,
+    "remaining_writes": null,
+    "remaining_downloads": null,
+    "can_reshare": false,
+    "granted_by": "dera.ah.14",
+    "expires_at": 1779656400
   }
 ]

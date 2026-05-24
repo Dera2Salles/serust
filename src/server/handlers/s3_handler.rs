@@ -65,7 +65,7 @@ async fn handle_request(
         "GET" => {
             if let Some(query) = req.uri().query() {
                 if query.contains("list-type=2") {
-                    return handle_list_objects(&user, &rel_path, files).await;
+                    return handle_list_objects(&user, &rel_path, files, shares.clone()).await;
                 }
                 if query.contains("shares=in") {
                     return handle_list_shares(&req, &user, shares).await;
@@ -100,7 +100,9 @@ async fn handle_request(
                 if query.contains("share=grant") {
                     let to = query.split('&').find(|s| s.starts_with("to=")).and_then(|s| s.split('=').nth(1)).unwrap_or("");
                     let perm = query.split('&').find(|s| s.starts_with("perm=")).and_then(|s| s.split('=').nth(1)).unwrap_or("read");
-                    return handle_share_grant(&user, &rel_path, to, perm, shares).await;
+                    let reshare = query.split('&').find(|s| s.starts_with("reshare=")).and_then(|s| s.split('=').nth(1)).unwrap_or("false") == "true";
+                    let expires_at = query.split('&').find(|s| s.starts_with("expires_at=")).and_then(|s| s.split('=').nth(1)).and_then(|s| s.parse::<u64>().ok());
+                    return handle_share_grant(&user, &rel_path, to, perm, reshare, expires_at, shares).await;
                 }
                 if query.contains("compress=") {
                     let format = query.split('&').find(|s| s.starts_with("compress=")).and_then(|s| s.split('=').nth(1)).unwrap_or("zip");
@@ -261,6 +263,7 @@ async fn handle_list_objects(
     user: &crate::user::domain::User,
     path: &str,
     files: Arc<FileService>,
+    shares: Arc<ShareService>,
 ) -> Result<S3Response, BoxError> {
     match files.list(user, path).await {
         Ok(entries) => {
@@ -277,9 +280,28 @@ async fn handle_list_objects(
 
             xml.push_str(&format!("  <Name>arosaina-bucket</Name>\n  <Prefix>{}</Prefix>\n", path_prefix));
             
+            // Check permissions for the user
+            let mut can_read = true;
+            let mut can_write = true;
+            let mut can_download = true;
+            let mut can_reshare = true;
+
+            let grants = shares.list_incoming(&user.username).await;
+            for grant in grants {
+                let share_path = if grant.path.starts_with('/') { &grant.path[1..] } else { &grant.path };
+                if path.starts_with(share_path) || share_path.starts_with(path) {
+                    can_read = grant.can_read;
+                    can_write = grant.can_write;
+                    can_download = grant.can_download;
+                    can_reshare = grant.can_reshare;
+                    break;
+                }
+            }
+
             for (name, is_dir) in entries {
                 if is_dir {
-                    xml.push_str(&format!("  <CommonPrefixes><Prefix>{}{}/</Prefix></CommonPrefixes>\n", path_prefix, name));
+                    xml.push_str(&format!("  <CommonPrefixes>\n    <Prefix>{}{}/</Prefix>\n    <CanRead>{}</CanRead>\n    <CanWrite>{}</CanWrite>\n    <CanDownload>{}</CanDownload>\n    <CanReshare>{}</CanReshare>\n  </CommonPrefixes>\n", 
+                        path_prefix, name, can_read, can_write, can_download, can_reshare));
                 } else {
                     let mut size = 0;
                     if let Ok(Some((s, _, _))) = files.stat(user, path, &name).await {
@@ -288,6 +310,10 @@ async fn handle_list_objects(
                     xml.push_str("  <Contents>\n");
                     xml.push_str(&format!("    <Key>{}{}</Key>\n", path_prefix, name));
                     xml.push_str(&format!("    <Size>{}</Size>\n", size));
+                    xml.push_str(&format!("    <CanRead>{}</CanRead>\n", can_read));
+                    xml.push_str(&format!("    <CanWrite>{}</CanWrite>\n", can_write));
+                    xml.push_str(&format!("    <CanDownload>{}</CanDownload>\n", can_download));
+                    xml.push_str(&format!("    <CanReshare>{}</CanReshare>\n", can_reshare));
                     xml.push_str("  </Contents>\n");
                 }
             }
@@ -382,13 +408,15 @@ async fn handle_share_grant(
     path: &str,
     to: &str,
     perm: &str,
+    can_reshare: bool,
+    expires_at: Option<u64>,
     shares: Arc<ShareService>,
 ) -> Result<S3Response, BoxError> {
     let can_read = perm.contains('r') || perm.contains('R');
     let can_write = perm.contains('w') || perm.contains('W');
     let can_download = perm.contains('d') || perm.contains('D');
     
-    match shares.grant(&user.username, "/", path, to, can_read, can_write, can_download, None, None, None, false, &user.username, None).await {
+    match shares.grant(&user.username, "/", path, to, can_read, can_write, can_download, None, None, None, can_reshare, &user.username, expires_at).await {
         Ok(_) => {
             let mut res = Response::new(Full::new(Bytes::new()));
             *res.status_mut() = StatusCode::OK;
