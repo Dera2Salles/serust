@@ -196,13 +196,34 @@ impl GitService {
         Ok(())
     }
 
+    pub fn find_path_at_commit(&self, repo: &Repository, commit: &Commit, blob_oid: Oid) -> Result<Option<String>, DomainError> {
+        let tree = commit.tree().map_err(|e| DomainError::Internal(e.to_string()))?;
+        
+        // Walk the tree to find the blob with the given Oid
+        let mut found_path = None;
+        tree.walk(git2::TreeWalkMode::PreOrder, |root, entry| {
+            if let Some(object) = entry.to_object(repo).ok() {
+                if let Some(blob) = object.as_blob() {
+                    if blob.id() == blob_oid {
+                        let path = format!("{}{}", root, entry.name().unwrap_or(""));
+                        found_path = Some(path);
+                        return git2::TreeWalkResult::Abort;
+                    }
+                }
+            }
+            git2::TreeWalkResult::Ok
+        }).map_err(|e| DomainError::Internal(e.to_string()))?;
+        
+        Ok(found_path)
+    }
+
     /// Restores a file to a specific version from history.
     pub fn restore_version(
         &self,
         user_path: &Path,
         rel_path: &str,
         commit_hash: &str,
-    ) -> Result<(), DomainError> {
+    ) -> Result<(String, Vec<u8>), DomainError> {
         let repo = self.init_repository(user_path)?;
         let oid = Oid::from_str(commit_hash).map_err(|e| DomainError::Internal(e.to_string()))?;
         let commit = repo.find_commit(oid).map_err(|e| DomainError::Internal(e.to_string()))?;
@@ -214,12 +235,13 @@ impl GitService {
         let object = entry.to_object(&repo).map_err(|e| DomainError::Internal(e.to_string()))?;
         let blob = object.as_blob().ok_or_else(|| DomainError::Internal("Not a blob".into()))?;
 
-        std::fs::write(user_path.join(rel_path), blob.content())
-            .map_err(|e| DomainError::Io(e))?;
-
-        self.commit_file(user_path, rel_path, &format!("Restored version from {}", commit_hash))?;
+        // Find the historical path for this blob
+        let historical_path = self.find_path_at_commit(&repo, &commit, blob.id())?
+            .unwrap_or_else(|| rel_path.to_string());
         
-        Ok(())
+        let historical_name = historical_path.split('/').last().unwrap_or(rel_path).to_string();
+
+        Ok((historical_name, blob.content().to_vec()))
     }
 
     /// Generates a unified diff for a specific file against a commit hash.

@@ -91,7 +91,23 @@ impl FileService {
     ) -> Result<(), DomainError> {
         let resolved = crate::common::permission::PermissionChecker::resolve_path(cwd, filename);
         let user_path = self.user_path(&user.username);
-        self.git.restore_version(&user_path, &resolved, hash)
+        let (historical_name, content) = self.git.restore_version(&user_path, &resolved, hash)?;
+        
+        // 1. Rename to original filename
+        let old_dir = resolved.split('/').collect::<Vec<_>>()[..resolved.split('/').count() - 1].join("/");
+        let new_resolved = if old_dir.is_empty() {
+            historical_name
+        } else {
+            format!("{}/{}", old_dir, historical_name)
+        };
+        
+        self.file_repo.rename(&user.username, &resolved, &new_resolved).await?;
+        
+        // 2. Write historical content
+        let meta = crate::file::domain::FileMetadata::new(&new_resolved, content.len() as u64, &user.username);
+        self.file_repo.store(meta, content).await?;
+
+        Ok(())
     }
 
     pub async fn git_diff(

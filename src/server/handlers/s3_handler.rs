@@ -280,25 +280,32 @@ async fn handle_list_objects(
 
             xml.push_str(&format!("  <Name>arosaina-bucket</Name>\n  <Prefix>{}</Prefix>\n", path_prefix));
             
-            // Check permissions for the user
-            let mut can_read = true;
-            let mut can_write = true;
-            let mut can_download = true;
-            let mut can_reshare = true;
-
-            let grants = shares.list_incoming(&user.username).await;
-            for grant in grants {
-                let share_path = if grant.path.starts_with('/') { &grant.path[1..] } else { &grant.path };
-                if path.starts_with(share_path) || share_path.starts_with(path) {
-                    can_read = grant.can_read;
-                    can_write = grant.can_write;
-                    can_download = grant.can_download;
-                    can_reshare = grant.can_reshare;
-                    break;
-                }
-            }
-
             for (name, is_dir) in entries {
+                // Determine permissions for the individual item
+                let mut can_read = true;
+                let mut can_write = true;
+                let mut can_download = true;
+                let mut can_reshare = true;
+
+                let item_path = if path == "/" {
+                    name.clone()
+                } else {
+                    format!("{}/{}", path, name)
+                };
+
+                // Check permissions if shared
+                let grants = shares.list_incoming(&user.username).await;
+                for grant in grants {
+                    let share_path = if grant.path.starts_with('/') { &grant.path[1..] } else { &grant.path };
+                    if item_path.starts_with(share_path) || share_path.starts_with(&item_path) {
+                        can_read = grant.can_read;
+                        can_write = grant.can_write;
+                        can_download = grant.can_download;
+                        can_reshare = grant.can_reshare;
+                        break;
+                    }
+                }
+
                 if is_dir {
                     xml.push_str(&format!("  <CommonPrefixes>\n    <Prefix>{}{}/</Prefix>\n    <CanRead>{}</CanRead>\n    <CanWrite>{}</CanWrite>\n    <CanDownload>{}</CanDownload>\n    <CanReshare>{}</CanReshare>\n  </CommonPrefixes>\n", 
                         path_prefix, name, can_read, can_write, can_download, can_reshare));

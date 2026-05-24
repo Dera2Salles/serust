@@ -82,5 +82,47 @@
     "can_reshare": false,
     "granted_by": "dera.ah.14",
     "expires_at": 1779656400
+  },
+  {
+    "owner": "jhon",
+    "path": "tone.xml",
+    "grantee": "dera.ah.14",
+    "can_read": true,
+    "can_write": false,
+    "can_download": true,
+    "remaining_reads": null,
+    "remaining_writes": null,
+    "remaining_downloads": null,
+    "can_reshare": false,
+    "granted_by": "jhon",
+    "expires_at": 1779656400
+  },
+  {
+    "owner": "dera.ah.14",
+    "path": "vaovao/V1.txt",
+    "grantee": "jhon",
+    "can_read": true,
+    "can_write": false,
+    "can_download": true,
+    "remaining_reads": null,
+    "remaining_writes": null,
+    "remaining_downloads": null,
+    "can_reshare": false,
+    "granted_by": "dera.ah.14",
+    "expires_at": 1779656400
+  },
+  {
+    "owner": "jhon",
+    "path": "shared/dera.ah.14/vaovao/V1.txt",
+    "grantee": "alice",
+    "can_read": true,
+    "can_write": false,
+    "can_download": true,
+    "remaining_reads": null,
+    "remaining_writes": null,
+    "remaining_downloads": null,
+    "can_reshare": false,
+    "granted_by": "jhon",
+    "expires_at": 0
   }
 ]
