@@ -193,6 +193,30 @@ impl IFileDatabaseRepository for FileRepository {
 
         Ok(())
     }
+
+    async fn update_path_prefix(&self, owner_id: Uuid, old_prefix: &str, new_prefix: &str) -> Result<()> {
+        let pattern = if old_prefix.ends_with('/') {
+            format!("{}%", old_prefix)
+        } else {
+            format!("{}/%", old_prefix)
+        };
+        let owner_str = owner_id.to_string();
+
+        // SQLite's REPLACE function can be used to update the path
+        sqlx::query(
+            "UPDATE files 
+             SET storage_path = ? || substr(storage_path, length(?) + 1)
+             WHERE owner_id = ? AND storage_path LIKE ?"
+        )
+        .bind(new_prefix)
+        .bind(old_prefix)
+        .bind(&owner_str)
+        .bind(&pattern)
+        .execute(&*self.db.pool)
+        .await?;
+
+        Ok(())
+    }
 }
 
 impl FileRepository {

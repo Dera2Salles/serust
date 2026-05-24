@@ -29,6 +29,7 @@ pub trait IFileDatabaseRepository: Send + Sync {
     async fn delete_permanently(&self, id: Uuid) -> Result<()>;
     async fn find_by_parent_path(&self, owner_id: Uuid, parent_path: &str) -> Result<Vec<DbFileMetadata>>;
     async fn delete_by_path_prefix(&self, owner_id: Uuid, path_prefix: &str) -> Result<()>;
+    async fn update_path_prefix(&self, owner_id: Uuid, old_prefix: &str, new_prefix: &str) -> Result<()>;
 }
 
 #[async_trait]

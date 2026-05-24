@@ -162,3 +162,17 @@ impl DeleteByPathPrefixDbUseCase {
         self.repo.delete_by_path_prefix(owner_id, path_prefix).await
     }
 }
+
+pub struct UpdatePathPrefixDbUseCase {
+    repo: Arc<dyn IFileDatabaseRepository>,
+}
+
+impl UpdatePathPrefixDbUseCase {
+    pub fn new(repo: Arc<dyn IFileDatabaseRepository>) -> Self {
+        Self { repo }
+    }
+
+    pub async fn execute(&self, owner_id: Uuid, old_prefix: &str, new_prefix: &str) -> Result<()> {
+        self.repo.update_path_prefix(owner_id, old_prefix, new_prefix).await
+    }
+}

@@ -12,5 +12,33 @@
     "can_reshare": false,
     "granted_by": "alice",
     "expires_at": null
+  },
+  {
+    "owner": "dera.ah.14",
+    "path": "vaovao/Screenshot_20260523_053629_WhatsApp.jpg",
+    "grantee": "jhon",
+    "can_read": true,
+    "can_write": false,
+    "can_download": false,
+    "remaining_reads": null,
+    "remaining_writes": null,
+    "remaining_downloads": null,
+    "can_reshare": false,
+    "granted_by": "dera.ah.14",
+    "expires_at": null
+  },
+  {
+    "owner": "jhon",
+    "path": "Présentation.md",
+    "grantee": "dera.ah.14",
+    "can_read": true,
+    "can_write": false,
+    "can_download": false,
+    "remaining_reads": null,
+    "remaining_writes": null,
+    "remaining_downloads": null,
+    "can_reshare": false,
+    "granted_by": "jhon",
+    "expires_at": null
   }
 ]
