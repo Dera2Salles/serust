@@ -215,6 +215,9 @@ impl IFileRepository for S3Repository {
                     .trim_end_matches('/')
                     .to_string();
                 if !name.is_empty() {
+                    if name == ".git" {
+                        continue;
+                    }
                     result.push((name, true));
                 }
             }
@@ -228,6 +231,9 @@ impl IFileRepository for S3Repository {
                     .unwrap_or(key)
                     .to_string();
                 if !name.is_empty() && !name.ends_with('/') {
+                    if name == ".git" {
+                        continue;
+                    }
                     result.push((name, false));
                 }
             }

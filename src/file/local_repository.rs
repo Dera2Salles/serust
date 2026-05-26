@@ -81,6 +81,9 @@ impl FileRepository {
             let path = entry.path();
             let is_dir = path.is_dir();
             if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if name == ".git" {
+                    continue;
+                }
                 result.push((name.to_string(), is_dir));
             }
         }
