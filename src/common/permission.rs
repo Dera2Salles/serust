@@ -42,4 +42,16 @@ impl PermissionChecker {
         }
         parts.join("/")
     }
+
+    /// Parses a path starting with "shared/" into (owner, inner_path).
+    pub fn parse_shared(resolved: &str) -> Option<(String, String)> {
+        let rest = resolved.strip_prefix("shared/")?;
+        let mut parts = rest.splitn(2, '/');
+        let owner = parts.next()?.to_string();
+        let inner = parts.next().unwrap_or("").to_string();
+        if owner.is_empty() {
+            return None;
+        }
+        Some((owner, inner))
+    }
 }

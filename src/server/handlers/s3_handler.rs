@@ -170,9 +170,15 @@ async fn handle_get_object(
             res.headers_mut().insert(header::CONTENT_TYPE, "application/octet-stream".parse()?);
             Ok(res)
         }
-        Err(_) => {
-            let mut res = Response::new(Full::new(Bytes::from("Not Found")));
-            *res.status_mut() = StatusCode::NOT_FOUND;
+        Err(e) => {
+            use crate::common::error::DomainError;
+            let (status, msg) = match e {
+                DomainError::PermissionDenied => (StatusCode::FORBIDDEN, "Permission Denied"),
+                DomainError::FileNotFound => (StatusCode::NOT_FOUND, "Not Found"),
+                _ => (StatusCode::INTERNAL_SERVER_ERROR, "Internal Error"),
+            };
+            let mut res = Response::new(Full::new(Bytes::from(msg)));
+            *res.status_mut() = status;
             Ok(res)
         }
     }
@@ -297,12 +303,20 @@ async fn handle_list_objects(
                 let grants = shares.list_incoming(&user.username).await;
                 for grant in grants {
                     let share_path = if grant.path.starts_with('/') { &grant.path[1..] } else { &grant.path };
-                    if item_path.starts_with(share_path) || share_path.starts_with(&item_path) {
-                        can_read = grant.can_read;
-                        can_write = grant.can_write;
-                        can_download = grant.can_download;
-                        can_reshare = grant.can_reshare;
-                        break;
+                    
+                    let expected_prefix = format!("shared/{}/", grant.owner);
+                    if item_path.starts_with(&expected_prefix) {
+                        let inner_item_path = &item_path[expected_prefix.len()..];
+                        if inner_item_path.starts_with(share_path) || share_path.starts_with(inner_item_path) {
+                            can_read = grant.can_read;
+                            can_write = grant.can_write;
+                            can_download = grant.can_download;
+                            can_reshare = grant.can_reshare;
+                            break;
+                        }
+                    } else if item_path.starts_with("shared/") && item_path.split('/').nth(1).unwrap_or("") == grant.owner {
+                         // Virtual owner directory under /shared
+                         can_read = true; 
                     }
                 }
 

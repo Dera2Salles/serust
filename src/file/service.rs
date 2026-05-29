@@ -7,7 +7,8 @@ use crate::file::{
     RenameUseCase, StatUseCase, UploadUseCase,
     RestoreUseCase, PurgeUseCase,
 };
-use crate::database::file_usecases::FindDeletedFilesDbUseCase;
+use crate::database::file_usecases::{FindDeletedFilesDbUseCase, FindFileByPathUseCase};
+use crate::share::service::ShareService;
 use crate::user::domain::User;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -25,9 +26,11 @@ pub struct FileService {
     restore: Arc<RestoreUseCase>,
     purge: Arc<PurgeUseCase>,
     find_deleted: Arc<FindDeletedFilesDbUseCase>,
+    find_file_by_path: Arc<FindFileByPathUseCase>,
 
     pub git: Arc<GitService>,
     pub compression: Arc<CompressionService>,
+    pub shares: Arc<ShareService>,
 }
 
 impl FileService {
@@ -44,9 +47,11 @@ impl FileService {
         restore: Arc<RestoreUseCase>,
         purge: Arc<PurgeUseCase>,
         find_deleted: Arc<FindDeletedFilesDbUseCase>,
+        find_file_by_path: Arc<FindFileByPathUseCase>,
 
         git: Arc<GitService>,
         compression: Arc<CompressionService>,
+        shares: Arc<ShareService>,
     ) -> Self {
         Self {
             storage_root,
@@ -61,9 +66,10 @@ impl FileService {
             restore,
             purge,
             find_deleted,
-
+            find_file_by_path,
             git,
             compression,
+            shares,
         }
     }
 
@@ -214,6 +220,13 @@ impl FileService {
             .map_err(|e| DomainError::Internal(e.to_string()))
     }
 
+    pub async fn find_db_file(&self, user_id: uuid::Uuid, path: &str) -> Result<Option<crate::database::domain::DbFileMetadata>, DomainError> {
+        // Ensure path starts with / for DB lookup
+        let storage_path = if path.starts_with('/') { path.to_string() } else { format!("/{}", path) };
+        self.find_file_by_path.execute(user_id, &storage_path).await
+            .map_err(|e| DomainError::Internal(e.to_string()))
+    }
+
     pub async fn get_reader(
         &self,
         user: &User,
@@ -223,6 +236,13 @@ impl FileService {
         let resolved = crate::common::permission::PermissionChecker::resolve_path(cwd, filename);
         if !crate::common::permission::PermissionChecker::is_safe_path(&resolved) {
             return Err(DomainError::UnsafePath);
+        }
+
+        if let Some((owner, inner)) = crate::common::permission::PermissionChecker::parse_shared(&resolved) {
+            if !self.shares.can_download(&user.username, &owner, &inner).await {
+                return Err(DomainError::PermissionDenied);
+            }
+            return self.file_repo.get_reader(&owner, &inner).await;
         }
 
         self.file_repo.get_reader(&user.username, &resolved).await
@@ -237,6 +257,13 @@ impl FileService {
         let resolved = crate::common::permission::PermissionChecker::resolve_path(cwd, filename);
         if !crate::common::permission::PermissionChecker::is_safe_path(&resolved) {
             return Err(DomainError::UnsafePath);
+        }
+
+        if let Some((owner, inner)) = crate::common::permission::PermissionChecker::parse_shared(&resolved) {
+            if !self.shares.can_download(&user.username, &owner, &inner).await {
+                return Err(DomainError::PermissionDenied);
+            }
+            return self.file_repo.get_presigned_url(&owner, &inner).await;
         }
 
         self.file_repo.get_presigned_url(&user.username, &resolved).await

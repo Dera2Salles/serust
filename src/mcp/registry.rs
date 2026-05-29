@@ -201,7 +201,10 @@ impl McpRegistry {
                         "path": { "type": "string", "description": "Path to the file or folder" },
                         "target_user": { "type": "string", "description": "Username of the user to share with" },
                         "can_read": { "type": "boolean", "description": "Grant read permission", "default": true },
-                        "can_write": { "type": "boolean", "description": "Grant write permission", "default": false }
+                        "can_write": { "type": "boolean", "description": "Grant write permission", "default": false },
+                        "can_reshare": { "type": "boolean", "description": "Default: false" },
+                        "max_reads": { "type": "integer", "description": "Optional maximum number of reads" },
+                        "expires_at": { "type": "string", "description": "Optional ISO 8601 expiration date" }
                     },
                     "required": ["username", "path", "target_user"]
                 }),
@@ -215,6 +218,57 @@ impl McpRegistry {
                         "username": { "type": "string", "description": "The owner of the shared files" }
                     },
                     "required": ["username"]
+                }),
+            },
+            McpTool {
+                name: "create_share_link".into(),
+                description: "Create a public share link for a file.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "username": { "type": "string", "description": "Authenticated username" },
+                        "path": { "type": "string", "description": "Path to the file" },
+                        "label": { "type": "string", "description": "Optional label for the link" },
+                        "password": { "type": "string", "description": "Optional password protection" },
+                        "max_reads": { "type": "integer", "description": "Optional maximum number of downloads" },
+                        "expires_at": { "type": "string", "description": "Optional ISO 8601 expiration date" }
+                    },
+                    "required": ["username", "path"]
+                }),
+            },
+            McpTool {
+                name: "list_my_share_links".into(),
+                description: "List all public share links created by the user.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "username": { "type": "string", "description": "Authenticated username" }
+                    },
+                    "required": ["username"]
+                }),
+            },
+            McpTool {
+                name: "revoke_share_link".into(),
+                description: "Permanently delete a public share link.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "username": { "type": "string", "description": "Authenticated username" },
+                        "id": { "type": "string", "description": "The ID of the link to revoke" }
+                    },
+                    "required": ["username", "id"]
+                }),
+            },
+            McpTool {
+                name: "revoke_share_grant".into(),
+                description: "Permanently delete a direct share grant.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "username": { "type": "string", "description": "Authenticated username" },
+                        "id": { "type": "string", "description": "The ID of the grant to revoke" }
+                    },
+                    "required": ["username", "id"]
                 }),
             },
             McpTool {
@@ -343,6 +397,10 @@ impl McpRegistry {
             "search_users" => self.tool_search_users(args).await,
             "create_share_grant" => self.tool_create_share_grant(args).await,
             "list_outgoing_shares" => self.tool_list_outgoing_shares(args).await,
+            "create_share_link" => self.tool_create_share_link(args).await,
+            "list_my_share_links" => self.tool_list_my_share_links(args).await,
+            "revoke_share_link" => self.tool_revoke_share_link(args).await,
+            "revoke_share_grant" => self.tool_revoke_share_grant(args).await,
             "list_all_users" => self.tool_list_all_users(args).await,
             "delete_user" => self.tool_delete_user(args).await,
             "update_user_status" => self.tool_update_user_status(args).await,
@@ -889,37 +947,48 @@ impl McpRegistry {
             Err(e) => return McpToolResult::error(e),
         };
 
-        let can_read = args
-            .get("can_read")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true);
-        let can_write = args
-            .get("can_write")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        let can_read = args.get("can_read").and_then(|v| v.as_bool()).unwrap_or(true);
+        let can_write = args.get("can_write").and_then(|v| v.as_bool()).unwrap_or(false);
+        let can_reshare = args.get("can_reshare").and_then(|v| v.as_bool()).unwrap_or(false);
+        let max_reads = args.get("max_reads").and_then(|v| v.as_i64());
+        let expires_at_str = args.get("expires_at").and_then(|v| v.as_str());
 
-        match self
-            .share_service
-            .grant(
-                username,
-                "/",
-                path,
-                target_user,
-                can_read,
-                can_write,
-                true,
-                None,
-                None,
-                None,
-                false,
-                username,
-                None,
-            )
-            .await
-        {
-            Ok(_) => {
-                McpToolResult::success(format!("Successfully shared {} with {}", path, target_user))
+        let user = self.make_user(username).await;
+        if user.id.is_nil() {
+            return McpToolResult::error("Owner not found");
+        }
+
+        let grantee = self.make_user(target_user).await;
+        if grantee.id.is_nil() {
+            return McpToolResult::error("Grantee not found");
+        }
+
+        let file_meta = match self.file_service.find_db_file(user.id, path).await {
+            Ok(Some(f)) => f,
+            Ok(None) => return McpToolResult::error("File not found in database"),
+            Err(e) => return McpToolResult::error(format!("Error: {}", e)),
+        };
+
+        let expires_at = if let Some(s) = expires_at_str {
+            match chrono::DateTime::parse_from_rfc3339(s) {
+                Ok(dt) => Some(dt.with_timezone(&chrono::Utc)),
+                Err(_) => return McpToolResult::error("Invalid ISO 8601 date format for expires_at"),
             }
+        } else {
+            None
+        };
+
+        match self.share_service.create_direct_share(
+            user.id,
+            file_meta.id,
+            grantee.id,
+            can_read,
+            can_write,
+            can_reshare,
+            max_reads,
+            expires_at,
+        ).await {
+            Ok(_) => McpToolResult::success(format!("Successfully shared {} with {}", path, target_user)),
             Err(e) => McpToolResult::error(format!("Error sharing file: {:?}", e)),
         }
     }
@@ -930,20 +999,146 @@ impl McpRegistry {
             Err(e) => return McpToolResult::error(e),
         };
 
-        let grants = self.share_service.list_outgoing(username).await;
-        
-        let list: Vec<Value> = grants
-            .into_iter()
-            .map(|g| json!({
-                "path": g.path,
-                "grantee": g.grantee,
-                "can_read": g.can_read,
-                "can_write": g.can_write,
-                "expires_at": g.expires_at,
-            }))
-            .collect();
+        let user = self.make_user(username).await;
+        if user.id.is_nil() {
+            return McpToolResult::error("User not found");
+        }
 
-        McpToolResult::success(json!({ "shares": list }).to_string())
+        match self.share_service.list_my_grants(user.id).await {
+            Ok(grants) => {
+                let list: Vec<Value> = grants
+                    .into_iter()
+                    .map(|g| json!({
+                        "id": g.id,
+                        "file_id": g.file_id,
+                        "grantee_id": g.granted_to,
+                        "can_read": g.can_read,
+                        "can_write": g.can_write,
+                        "can_reshare": g.can_reshare,
+                        "max_reads": g.max_reads,
+                        "expires_at": g.expires_at,
+                    }))
+                    .collect();
+                McpToolResult::success(json!({ "shares": list }).to_string())
+            }
+            Err(e) => McpToolResult::error(format!("Error: {}", e)),
+        }
+    }
+
+    async fn tool_create_share_link(&self, args: &Value) -> McpToolResult {
+        let username = match Self::get_str(args, "username") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let path = match Self::get_str(args, "path") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let label = args.get("label").and_then(|v| v.as_str().map(|s| s.to_string()));
+        let password = args.get("password").and_then(|v| v.as_str().map(|s| s.to_string()));
+        let max_reads = args.get("max_reads").and_then(|v| v.as_i64());
+        let expires_at_str = args.get("expires_at").and_then(|v| v.as_str());
+
+        let user = self.make_user(username).await;
+        if user.id.is_nil() {
+            return McpToolResult::error("User not found");
+        }
+
+        let file_meta = match self.file_service.find_db_file(user.id, path).await {
+            Ok(Some(f)) => f,
+            Ok(None) => return McpToolResult::error("File not found in database"),
+            Err(e) => return McpToolResult::error(format!("Error: {}", e)),
+        };
+
+        let expires_at = if let Some(s) = expires_at_str {
+            match chrono::DateTime::parse_from_rfc3339(s) {
+                Ok(dt) => Some(dt.with_timezone(&chrono::Utc)),
+                Err(_) => return McpToolResult::error("Invalid ISO 8601 date format for expires_at"),
+            }
+        } else {
+            None
+        };
+
+        let token = uuid::Uuid::new_v4().to_string();
+        match self.share_service.create_public_link(
+            user.id,
+            file_meta.id,
+            token.clone(),
+            label,
+            true,
+            false,
+            false,
+            max_reads,
+            expires_at,
+            password,
+        ).await {
+            Ok(_) => McpToolResult::success(json!({ "token": token, "url": format!("/public/{}", token) }).to_string()),
+            Err(e) => McpToolResult::error(format!("Error: {}", e)),
+        }
+    }
+
+    async fn tool_list_my_share_links(&self, args: &Value) -> McpToolResult {
+        let username = match Self::get_str(args, "username") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+
+        let user = self.make_user(username).await;
+        if user.id.is_nil() {
+            return McpToolResult::error("User not found");
+        }
+
+        match self.share_service.list_my_links(user.id).await {
+            Ok(links) => {
+                let list: Vec<Value> = links
+                    .into_iter()
+                    .map(|l| json!({
+                        "id": l.id,
+                        "file_id": l.file_id,
+                        "token": l.token,
+                        "label": l.label,
+                        "max_reads": l.max_reads,
+                        "expires_at": l.expires_at,
+                        "is_protected": l.password_hash.is_some(),
+                        "is_active": l.is_active,
+                    }))
+                    .collect();
+                McpToolResult::success(json!({ "links": list }).to_string())
+            }
+            Err(e) => McpToolResult::error(format!("Error: {}", e)),
+        }
+    }
+
+    async fn tool_revoke_share_link(&self, args: &Value) -> McpToolResult {
+        let id_str = match Self::get_str(args, "id") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let id = match uuid::Uuid::parse_str(id_str) {
+            Ok(v) => v,
+            Err(_) => return McpToolResult::error("Invalid UUID format"),
+        };
+
+        match self.share_service.revoke_link(id).await {
+            Ok(_) => McpToolResult::success("Link revoked successfully."),
+            Err(e) => McpToolResult::error(format!("Error: {}", e)),
+        }
+    }
+
+    async fn tool_revoke_share_grant(&self, args: &Value) -> McpToolResult {
+        let id_str = match Self::get_str(args, "id") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        let id = match uuid::Uuid::parse_str(id_str) {
+            Ok(v) => v,
+            Err(_) => return McpToolResult::error("Invalid UUID format"),
+        };
+
+        match self.share_service.revoke_grant(id).await {
+            Ok(_) => McpToolResult::success("Grant revoked successfully."),
+            Err(e) => McpToolResult::error(format!("Error: {}", e)),
+        }
     }
 
     async fn tool_list_all_users(&self, _args: &Value) -> McpToolResult {

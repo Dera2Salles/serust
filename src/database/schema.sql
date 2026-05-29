@@ -34,6 +34,10 @@ CREATE TABLE IF NOT EXISTS files (
     FOREIGN KEY(owner_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE INDEX IF NOT EXISTS idx_files_owner_path ON files (owner_id, storage_path);
+CREATE INDEX IF NOT EXISTS idx_files_is_deleted ON files (is_deleted);
+CREATE INDEX IF NOT EXISTS idx_files_storage_path ON files (storage_path);
+
 CREATE TABLE IF NOT EXISTS share_links (
     id TEXT PRIMARY KEY, 
     file_id TEXT NOT NULL,

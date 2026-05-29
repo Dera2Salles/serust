@@ -37,6 +37,10 @@ pub trait IShareDatabaseRepository: Send + Sync {
     async fn create_link(&self, link: &DbShareLink) -> Result<()>;
     async fn create_grant(&self, grant: &DbShareGrant) -> Result<()>;
     async fn find_link_by_token(&self, token: &str) -> Result<Option<DbShareLink>>;
+    async fn list_links_by_owner(&self, owner_id: Uuid) -> Result<Vec<DbShareLink>>;
+    async fn list_grants_by_owner(&self, owner_id: Uuid) -> Result<Vec<DbShareGrant>>;
+    async fn delete_link(&self, id: Uuid) -> Result<()>;
+    async fn delete_grant(&self, id: Uuid) -> Result<()>;
 }
 
 #[async_trait]

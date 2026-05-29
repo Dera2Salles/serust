@@ -87,7 +87,7 @@ async fn handle_http(
 
     if method == Method::GET && path.starts_with("/public/") {
         let token = path.trim_start_matches("/public/");
-        return Ok(handle_public_download(token, &state, &cors_headers).await);
+        return Ok(handle_public_download(token, &state, &cors_headers, &query).await);
     }
 
     if method == Method::GET && path == "/api/server/status" {
@@ -337,6 +337,7 @@ async fn handle_public_download(
     token: &str,
     state: &McpServerState,
     cors_headers: &[(&str, &str)],
+    query_params: &str,
 ) -> hyper::Response<http_body_util::Full<bytes::Bytes>> {
     use hyper::StatusCode;
 
@@ -349,7 +350,7 @@ async fn handle_public_download(
         Ok(None) => {
             return json_response(
                 StatusCode::NOT_FOUND,
-                json!({"error": "Share link not found or expired"}),
+                json!({"error": "Share link not found or inactive"}),
                 cors_headers,
             )
         }
@@ -365,7 +366,7 @@ async fn handle_public_download(
     if !link.can_read || !link.is_active {
         return json_response(
             StatusCode::FORBIDDEN,
-            json!({"error": "This link does not grant read access"}),
+            json!({"error": "This link is disabled"}),
             cors_headers,
         );
     }
@@ -375,6 +376,37 @@ async fn handle_public_download(
             return json_response(
                 StatusCode::GONE,
                 json!({"error": "Share link has expired"}),
+                cors_headers,
+            );
+        }
+    }
+
+    // Password check
+    if let Some(ref hash) = link.password_hash {
+        let password = extract_query_param(query_params, "password").unwrap_or("");
+        if crate::user::service::AuthService::hash_password(password) != *hash {
+            return json_response(
+                StatusCode::UNAUTHORIZED,
+                json!({"error": "Invalid password", "requires_password": true}),
+                cors_headers,
+            );
+        }
+    }
+
+    // Read counter check
+    let read_count_row = sqlx::query("SELECT read_count FROM read_counters WHERE share_link_id = ?")
+        .bind(&link.id.to_string())
+        .fetch_optional(&*state.db.pool)
+        .await
+        .unwrap_or(None);
+
+    if let (Some(max), Some(row)) = (link.max_reads, read_count_row) {
+        use sqlx::Row;
+        let count: i64 = row.try_get("read_count").unwrap_or(0);
+        if count >= max {
+            return json_response(
+                StatusCode::GONE,
+                json!({"error": "Maximum read count reached"}),
                 cors_headers,
             );
         }
@@ -425,7 +457,21 @@ async fn handle_public_download(
         .download(&user_domain, "/", &file_meta.filename)
         .await
     {
-        Ok(d) => d,
+        Ok(d) => {
+            // Log the access to trigger read counter update
+            use sqlx::Executor;
+            let _ = state.db.pool.execute(sqlx::query(
+                "INSERT INTO access_log (file_id, accessed_by, share_link_id, grant_id, action, accessed_at, bytes_transferred) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)"
+            )
+            .bind(&link.file_id.to_string())
+            .bind(None::<String>)
+            .bind(&Some(link.id.to_string()))
+            .bind(None::<String>)
+            .bind("read")
+            .bind(Some(d.len() as i64))).await;
+
+            d
+        },
         Err(e) => {
             return json_response(
                 StatusCode::INTERNAL_SERVER_ERROR,

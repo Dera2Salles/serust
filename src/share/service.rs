@@ -1,24 +1,46 @@
 use crate::common::error::DomainError;
 use crate::common::permission::PermissionChecker;
+use crate::database::domain::{DbShareGrant, DbShareLink};
+use crate::database::share_usecases::{
+    CreateGrantUseCase, CreateLinkUseCase, ListMyGrantsUseCase, ListMyLinksUseCase,
+    RevokeGrantUseCase, RevokeLinkUseCase,
+};
 use crate::share::domain::ShareGrant;
 use crate::share::local_repository::ShareRepository;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct ShareService {
     repo: Arc<ShareRepository>,
+    db: crate::database::Database,
+    create_link_usecase: Arc<CreateLinkUseCase>,
+    create_grant_usecase: Arc<CreateGrantUseCase>,
+    list_links_usecase: Arc<ListMyLinksUseCase>,
+    list_grants_usecase: Arc<ListMyGrantsUseCase>,
+    revoke_link_usecase: Arc<RevokeLinkUseCase>,
+    revoke_grant_usecase: Arc<RevokeGrantUseCase>,
 }
 
 impl ShareService {
-    pub fn new(repo: Arc<ShareRepository>) -> Self {
-        Self { repo }
-    }
-
-    fn now_secs() -> u64 {
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs()
+    pub fn new(
+        repo: Arc<ShareRepository>,
+        db: crate::database::Database,
+        create_link_usecase: Arc<CreateLinkUseCase>,
+        create_grant_usecase: Arc<CreateGrantUseCase>,
+        list_links_usecase: Arc<ListMyLinksUseCase>,
+        list_grants_usecase: Arc<ListMyGrantsUseCase>,
+        revoke_link_usecase: Arc<RevokeLinkUseCase>,
+        revoke_grant_usecase: Arc<RevokeGrantUseCase>,
+    ) -> Self {
+        Self {
+            repo,
+            db,
+            create_link_usecase,
+            create_grant_usecase,
+            list_links_usecase,
+            list_grants_usecase,
+            revoke_link_usecase,
+            revoke_grant_usecase,
+        }
     }
 
     fn normalize_path(cwd: &str, path: &str) -> Result<String, DomainError> {
@@ -39,16 +61,39 @@ impl ShareService {
         path: &str,
     ) -> Result<(String, String), DomainError> {
         let resolved = Self::normalize_path(cwd, path)?;
-        if let Some(rest) = resolved.strip_prefix("shared/") {
-            let mut parts = rest.splitn(2, '/');
-            let owner = parts.next().unwrap_or("").to_string();
-            let inner = parts.next().unwrap_or("").to_string();
-            if owner.is_empty() {
-                return Err(DomainError::FileNotFound);
-            }
+        if let Some((owner, inner)) = PermissionChecker::parse_shared(&resolved) {
             return Ok((owner, inner));
         }
         Ok((actor.to_string(), resolved))
+    }
+
+    pub async fn create_direct_share(
+        &self,
+        owner_id: uuid::Uuid,
+        file_id: uuid::Uuid,
+        grantee_id: uuid::Uuid,
+        can_read: bool,
+        can_write: bool,
+        can_reshare: bool,
+        max_reads: Option<i64>,
+        expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<(), DomainError> {
+        let grant = DbShareGrant {
+            id: uuid::Uuid::new_v4(),
+            file_id,
+            granted_by: owner_id,
+            granted_to: grantee_id,
+            can_read,
+            can_write,
+            can_reshare,
+            max_reads,
+            expires_at,
+            granted_at: chrono::Utc::now(),
+        };
+        self.create_grant_usecase
+            .execute(&grant)
+            .await
+            .map_err(|e| DomainError::Internal(e.to_string()))
     }
 
     pub async fn grant(
@@ -131,90 +176,197 @@ impl ShareService {
             .collect()
     }
 
-    pub async fn list_incoming(&self, grantee: &str) -> Vec<ShareGrant> {
-        let now = Self::now_secs();
-        self.repo
-            .all()
+    pub async fn list_my_links(&self, owner_id: uuid::Uuid) -> Result<Vec<DbShareLink>, DomainError> {
+        self.list_links_usecase
+            .execute(owner_id)
             .await
-            .into_iter()
-            .filter(|g| g.grantee == grantee && g.expires_at.map_or(true, |exp| exp > now))
-            .collect()
+            .map_err(|e| DomainError::Internal(e.to_string()))
     }
 
-    pub async fn owners_shared_with(&self, grantee: &str) -> Vec<String> {
-        let mut owners: Vec<String> = self
-            .list_incoming(grantee)
+    pub async fn list_my_grants(&self, owner_id: uuid::Uuid) -> Result<Vec<DbShareGrant>, DomainError> {
+        self.list_grants_usecase
+            .execute(owner_id)
             .await
-            .into_iter()
-            .map(|g| g.owner)
-            .collect();
-        owners.sort();
-        owners.dedup();
-        owners
+            .map_err(|e| DomainError::Internal(e.to_string()))
     }
 
-    fn grant_allows_path(grant_path: &str, target: &str) -> bool {
-        if grant_path == target {
-            return true;
-        }
-        if grant_path.is_empty() {
-            return true;
-        }
-        let grant_prefix = format!("{}/", grant_path.trim_end_matches('/'));
-        if target.starts_with(&grant_prefix) {
-            return true;
-        }
-        if target.is_empty() {
-            return true;
-        }
-        let target_prefix = format!("{}/", target.trim_end_matches('/'));
-        grant_path.starts_with(&target_prefix)
+    pub async fn create_public_link(
+        &self,
+        owner_id: uuid::Uuid,
+        file_id: uuid::Uuid,
+        token: String,
+        label: Option<String>,
+        can_read: bool,
+        can_write: bool,
+        can_reshare: bool,
+        max_reads: Option<i64>,
+        expires_at: Option<chrono::DateTime<chrono::Utc>>,
+        password: Option<String>,
+    ) -> Result<(), DomainError> {
+        let password_hash = password.map(|p| crate::user::service::AuthService::hash_password(&p));
+        let link = DbShareLink {
+            id: uuid::Uuid::new_v4(),
+            file_id,
+            created_by: owner_id,
+            token,
+            label,
+            can_read,
+            can_write,
+            can_reshare,
+            max_reads,
+            expires_at,
+            password_hash,
+            is_active: true,
+        };
+        self.create_link_usecase
+            .execute(&link)
+            .await
+            .map_err(|e| DomainError::Internal(e.to_string()))
     }
 
-    fn is_expired(g: &ShareGrant, now: u64) -> bool {
-        g.expires_at.map_or(false, |exp| exp <= now)
+    pub async fn revoke_link(&self, id: uuid::Uuid) -> Result<(), DomainError> {
+        self.revoke_link_usecase
+            .execute(id)
+            .await
+            .map_err(|e| DomainError::Internal(e.to_string()))
+    }
+
+    pub async fn revoke_grant(&self, id: uuid::Uuid) -> Result<(), DomainError> {
+        self.revoke_grant_usecase
+            .execute(id)
+            .await
+            .map_err(|e| DomainError::Internal(e.to_string()))
+    }
+
+    pub async fn list_incoming(&self, grantee_username: &str) -> Vec<ShareGrant> {
+        let rows = sqlx::query(
+            "SELECT f.storage_path, u_owner.username as owner_username, u_grantor.username as grantor_username, p.can_read, p.can_write, p.is_expired, p.reads_remaining
+             FROM v_effective_permissions p
+             JOIN files f ON f.id = p.file_id
+             JOIN users u_owner ON u_owner.id = f.owner_id
+             JOIN users u_grantee ON u_grantee.id = p.user_id
+             LEFT JOIN share_grants g ON g.id = p.grant_id
+             LEFT JOIN users u_grantor ON u_grantor.id = g.granted_by
+             WHERE u_grantee.username = ? AND p.source = 'grant' AND p.is_valid = 1"
+        )
+        .bind(grantee_username)
+        .fetch_all(&*self.db.pool)
+        .await
+        .unwrap_or_default();
+
+        rows.into_iter().map(|r| {
+            use sqlx::Row;
+            ShareGrant {
+                owner: r.get("owner_username"),
+                path: r.get::<String, _>("storage_path").trim_start_matches('/').to_string(),
+                grantee: grantee_username.to_string(),
+                can_read: r.get::<i32, _>("can_read") != 0,
+                can_write: r.get::<i32, _>("can_write") != 0,
+                can_download: true,
+                remaining_reads: r.get::<Option<i32>, _>("reads_remaining").map(|v| v as u64),
+                remaining_writes: None,
+                remaining_downloads: None,
+                can_reshare: false,
+                granted_by: r.get::<Option<String>, _>("grantor_username").unwrap_or_else(|| r.get("owner_username")),
+                expires_at: None,
+            }
+        }).collect()
+    }
+
+    pub async fn owners_shared_with(&self, grantee_username: &str) -> Vec<String> {
+        let rows = sqlx::query(
+            "SELECT DISTINCT u_owner.username
+             FROM v_effective_permissions p
+             JOIN files f ON f.id = p.file_id
+             JOIN users u_owner ON u_owner.id = f.owner_id
+             JOIN users u_grantee ON u_grantee.id = p.user_id
+             WHERE u_grantee.username = ? AND p.source = 'grant' AND p.is_valid = 1"
+        )
+        .bind(grantee_username)
+        .fetch_all(&*self.db.pool)
+        .await
+        .unwrap_or_default();
+
+        rows.into_iter().map(|r| {
+            use sqlx::Row;
+            r.get::<String, _>(0)
+        }).collect()
     }
 
     pub async fn can_read(&self, actor: &str, owner: &str, owner_rel_path: &str) -> bool {
         if actor == owner {
             return true;
         }
-        let now = Self::now_secs();
-        self.repo.all().await.into_iter().any(|g| {
-            g.owner == owner
-                && g.grantee == actor
-                && g.can_read
-                && !Self::is_expired(&g, now)
-                && Self::grant_allows_path(&g.path, owner_rel_path)
-        })
+        let storage_path = if owner_rel_path.starts_with('/') { owner_rel_path.to_string() } else { format!("/{}", owner_rel_path) };
+        
+        // A path is readable if:
+        // 1. It is directly shared.
+        // 2. A parent folder is shared (inherited permission).
+        // 3. It is a parent of a shared item (discovery permission for virtual folders).
+        let query = "
+            SELECT 1 FROM v_effective_permissions p
+            JOIN files f_shared ON f_shared.id = p.file_id
+            JOIN users u_owner ON u_owner.id = f_shared.owner_id
+            JOIN users u_actor ON u_actor.id = p.user_id
+            WHERE u_actor.username = ? 
+              AND u_owner.username = ? 
+              AND p.can_read = 1 
+              AND p.is_valid = 1
+              AND (
+                  f_shared.storage_path = ? 
+                  OR (? || '/') LIKE (f_shared.storage_path || '/%')
+                  OR (f_shared.storage_path || '/') LIKE (? || '/%')
+              )
+            LIMIT 1";
+
+        let row = sqlx::query(query)
+            .bind(actor)
+            .bind(owner)
+            .bind(&storage_path)
+            .bind(&storage_path)
+            .bind(&storage_path)
+            .fetch_optional(&*self.db.pool)
+            .await
+            .unwrap_or(None);
+
+        row.is_some()
     }
 
     pub async fn can_write(&self, actor: &str, owner: &str, owner_rel_path: &str) -> bool {
         if actor == owner {
             return true;
         }
-        let now = Self::now_secs();
-        self.repo.all().await.into_iter().any(|g| {
-            g.owner == owner
-                && g.grantee == actor
-                && g.can_write
-                && !Self::is_expired(&g, now)
-                && Self::grant_allows_path(&g.path, owner_rel_path)
-        })
+        let storage_path = if owner_rel_path.starts_with('/') { owner_rel_path.to_string() } else { format!("/{}", owner_rel_path) };
+        
+        let query = "
+            SELECT 1 FROM v_effective_permissions p
+            JOIN files f_shared ON f_shared.id = p.file_id
+            JOIN users u_owner ON u_owner.id = f_shared.owner_id
+            JOIN users u_actor ON u_actor.id = p.user_id
+            WHERE u_actor.username = ? 
+              AND u_owner.username = ? 
+              AND p.can_write = 1 
+              AND p.is_valid = 1
+              AND (
+                  f_shared.storage_path = ? 
+                  OR (? || '/') LIKE (f_shared.storage_path || '/%')
+              )
+            LIMIT 1";
+
+        let row = sqlx::query(query)
+            .bind(actor)
+            .bind(owner)
+            .bind(&storage_path)
+            .bind(&storage_path)
+            .fetch_optional(&*self.db.pool)
+            .await
+            .unwrap_or(None);
+
+        row.is_some()
     }
 
     pub async fn can_download(&self, actor: &str, owner: &str, owner_rel_path: &str) -> bool {
-        if actor == owner {
-            return true;
-        }
-        let now = Self::now_secs();
-        self.repo.all().await.into_iter().any(|g| {
-            g.owner == owner
-                && g.grantee == actor
-                && g.can_download
-                && !Self::is_expired(&g, now)
-                && Self::grant_allows_path(&g.path, owner_rel_path)
-        })
+        self.can_read(actor, owner, owner_rel_path).await
     }
 
     pub async fn consume_read(
@@ -226,73 +378,52 @@ impl ShareService {
         if actor == owner {
             return Ok(());
         }
-        let now = Self::now_secs();
-        let mut grants = self.repo.all().await;
-        let mut idx: Option<usize> = None;
-        let mut best_len = 0usize;
-        for (i, g) in grants.iter().enumerate() {
-            if g.owner == owner
-                && g.grantee == actor
-                && g.can_read
-                && !Self::is_expired(&g, now)
-                && Self::grant_allows_path(&g.path, owner_rel_path)
-            {
-                let l = g.path.len();
-                if l >= best_len {
-                    best_len = l;
-                    idx = Some(i);
-                }
-            }
+        // Log access to trigger read counter
+        let storage_path = if owner_rel_path.starts_with('/') { owner_rel_path.to_string() } else { format!("/{}", owner_rel_path) };
+        let row = sqlx::query(
+            "SELECT p.file_id, p.grant_id FROM v_effective_permissions p
+             JOIN files f ON f.id = p.file_id
+             JOIN users u_owner ON u_owner.id = f.owner_id
+             JOIN users u_actor ON u_actor.id = p.user_id
+             WHERE u_actor.username = ? AND u_owner.username = ? AND f.storage_path = ? AND p.can_read = 1 AND p.is_valid = 1"
+        )
+        .bind(actor)
+        .bind(owner)
+        .bind(&storage_path)
+        .fetch_optional(&*self.db.pool)
+        .await
+        .map_err(|e| DomainError::Internal(e.to_string()))?;
+
+        if let Some(r) = row {
+            use sqlx::Row;
+            let file_id: String = r.get("file_id");
+            let grant_id: Option<String> = r.get("grant_id");
+            let actor_row = sqlx::query("SELECT id FROM users WHERE username = ?")
+                .bind(actor)
+                .fetch_one(&*self.db.pool).await
+                .map_err(|e| DomainError::Internal(e.to_string()))?;
+            let actor_id: String = actor_row.get(0);
+
+            sqlx::query(
+                "INSERT INTO access_log (file_id, accessed_by, grant_id, action, accessed_at) VALUES (?, ?, ?, 'read', CURRENT_TIMESTAMP)"
+            )
+            .bind(file_id)
+            .bind(actor_id)
+            .bind(grant_id)
+            .execute(&*self.db.pool).await
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
         }
-        let Some(i) = idx else {
-            return Err(DomainError::PermissionDenied);
-        };
-        if let Some(rem) = grants[i].remaining_reads.as_mut() {
-            if *rem == 0 {
-                return Err(DomainError::PermissionDenied);
-            }
-            *rem -= 1;
-        }
-        self.repo.replace_all(grants).await
+
+        Ok(())
     }
 
     pub async fn consume_write(
         &self,
-        actor: &str,
-        owner: &str,
-        owner_rel_path: &str,
+        _actor: &str,
+        _owner: &str,
+        _owner_rel_path: &str,
     ) -> Result<(), DomainError> {
-        if actor == owner {
-            return Ok(());
-        }
-        let now = Self::now_secs();
-        let mut grants = self.repo.all().await;
-        let mut idx: Option<usize> = None;
-        let mut best_len = 0usize;
-        for (i, g) in grants.iter().enumerate() {
-            if g.owner == owner
-                && g.grantee == actor
-                && g.can_write
-                && !Self::is_expired(&g, now)
-                && Self::grant_allows_path(&g.path, owner_rel_path)
-            {
-                let l = g.path.len();
-                if l >= best_len {
-                    best_len = l;
-                    idx = Some(i);
-                }
-            }
-        }
-        let Some(i) = idx else {
-            return Err(DomainError::PermissionDenied);
-        };
-        if let Some(rem) = grants[i].remaining_writes.as_mut() {
-            if *rem == 0 {
-                return Err(DomainError::PermissionDenied);
-            }
-            *rem -= 1;
-        }
-        self.repo.replace_all(grants).await
+        Ok(())
     }
 
     pub async fn consume_download(
@@ -301,51 +432,15 @@ impl ShareService {
         owner: &str,
         owner_rel_path: &str,
     ) -> Result<(), DomainError> {
-        if actor == owner {
-            return Ok(());
-        }
-        let now = Self::now_secs();
-        let mut grants = self.repo.all().await;
-        let mut idx: Option<usize> = None;
-        let mut best_len = 0usize;
-        for (i, g) in grants.iter().enumerate() {
-            if g.owner == owner
-                && g.grantee == actor
-                && g.can_download
-                && !Self::is_expired(&g, now)
-                && Self::grant_allows_path(&g.path, owner_rel_path)
-            {
-                let l = g.path.len();
-                if l >= best_len {
-                    best_len = l;
-                    idx = Some(i);
-                }
-            }
-        }
-        let Some(i) = idx else {
-            return Err(DomainError::PermissionDenied);
-        };
-        if let Some(rem) = grants[i].remaining_downloads.as_mut() {
-            if *rem == 0 {
-                return Err(DomainError::PermissionDenied);
-            }
-            *rem -= 1;
-        }
-        self.repo.replace_all(grants).await
+        self.consume_read(actor, owner, owner_rel_path).await
     }
 
     #[allow(dead_code)]
-    pub async fn can_reshare(&self, actor: &str, owner: &str, owner_rel_path: &str) -> bool {
+    pub async fn can_reshare(&self, actor: &str, owner: &str, _owner_rel_path: &str) -> bool {
         if actor == owner {
             return true;
         }
-        let now = Self::now_secs();
-        self.repo.all().await.into_iter().any(|g| {
-            g.owner == owner
-                && g.grantee == actor
-                && g.can_reshare
-                && !Self::is_expired(&g, now)
-                && Self::grant_allows_path(&g.path, owner_rel_path)
-        })
+        // Simplified for now, could also check DB
+        false
     }
 }

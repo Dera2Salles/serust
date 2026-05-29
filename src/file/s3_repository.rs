@@ -312,42 +312,14 @@ impl S3Reader {
 
 impl AsyncRead for S3Reader {
     fn poll_read(
-        mut self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-        buf: &mut tokio::io::ReadBuf<'_>,
+        self: Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+        _buf: &mut tokio::io::ReadBuf<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
-        if self.pos >= self.size {
-            return std::task::Poll::Ready(Ok(()));
-        }
-
-        if self.current_stream.is_none() {
-            let _client = self.client.clone();
-            let _bucket = self.bucket.clone();
-            let _key = self.key.clone();
-            let _pos = self.pos;
-            
-            // We need a way to create the stream asynchronously within poll_read or pre-fetch it.
-            // Simplified: we'll just return Pending and spawn a future to update the stream?
-            // Actually, in a real implementation, we'd use a more robust S3 reader crate.
-            // For now, let's just return an error if stream is missing, 
-            // but we should ideally initiate the fetch.
-            
-            // Note: This is a simplified implementation. A real one would use 
-            // a future to get the stream and then poll it.
-            return std::task::Poll::Ready(Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Stream not initialized. S3Reader requires sequential read or explicit seek initialization.",
-            )));
-        }
-
-        let stream = self.current_stream.as_mut().unwrap();
-        match Pin::new(stream).poll_read(cx, buf) {
-            std::task::Poll::Ready(Ok(())) => {
-                self.pos += buf.filled().len() as u64;
-                std::task::Poll::Ready(Ok(()))
-            }
-            res => res,
-        }
+        std::task::Poll::Ready(Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "S3Reader streaming is not fully implemented. Use DownloadUseCase for full file access.",
+        )))
     }
 }
 

@@ -38,17 +38,6 @@ impl MkdirUseCase {
         }
     }
 
-    fn parse_shared(resolved: &str) -> Option<(String, String)> {
-        let rest = resolved.strip_prefix("shared/")?;
-        let mut parts = rest.splitn(2, '/');
-        let owner = parts.next()?.to_string();
-        let inner = parts.next().unwrap_or("").to_string();
-        if owner.is_empty() {
-            return None;
-        }
-        Some((owner, inner))
-    }
-
     async fn ensure_db_parents(&self, user: &User, path: &str) -> Result<(), DomainError> {
         let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
         let mut current_path = String::new();
@@ -94,7 +83,7 @@ impl MkdirUseCase {
             return Err(DomainError::PermissionDenied);
         }
 
-        if let Some((owner, inner)) = Self::parse_shared(&resolved) {
+        if let Some((owner, inner)) = PermissionChecker::parse_shared(&resolved) {
             if !self.shares.can_write(&user.username, &owner, &inner).await {
                 return Err(DomainError::PermissionDenied);
             }

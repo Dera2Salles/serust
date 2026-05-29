@@ -28,25 +28,26 @@ impl ListUseCase {
         }
     }
 
-    fn parse_shared(resolved: &str) -> Option<(String, String)> {
-        let rest = resolved.strip_prefix("shared/")?;
-        let mut parts = rest.splitn(2, '/');
-        let owner = parts.next()?.to_string();
-        let inner = parts.next().unwrap_or("").to_string();
-        if owner.is_empty() {
-            return None;
-        }
-        Some((owner, inner))
-    }
-
     async fn list_shared_children(
         &self,
         user: &User,
         owner: &str,
         inner_dir: &str,
     ) -> Result<Vec<(String, bool)>, DomainError> {
+        let mut result_map: std::collections::HashMap<String, bool> = std::collections::HashMap::new();
+
+        // 1. If this directory itself is accessible, list its actual contents from disk
+        if self.shares.can_read(&user.username, owner, inner_dir).await {
+            if let Ok(disk_entries) = self.file_repo.list_entries(owner, inner_dir).await {
+                for (name, is_dir) in disk_entries {
+                    result_map.insert(name, is_dir);
+                }
+            }
+        }
+
+        // 2. Also include explicitly shared items that might be deeper but whose immediate 
+        // parent is the current directory (even if the current directory isn't shared).
         let grants = self.shares.list_incoming(&user.username).await;
-        let mut children: Vec<String> = Vec::new();
         let prefix = if inner_dir.is_empty() {
             "".to_string()
         } else {
@@ -58,29 +59,25 @@ impl ListUseCase {
                 continue;
             }
             let rest = &g.path[prefix.len()..];
+            if rest.is_empty() { continue; }
+            
             let child = rest.split('/').next().unwrap_or("").trim();
-            if !child.is_empty() {
-                children.push(child.to_string());
+            if !child.is_empty() && !result_map.contains_key(child) {
+                let child_path = if inner_dir.is_empty() {
+                    child.to_string()
+                } else {
+                    format!("{}/{}", inner_dir.trim_end_matches('/'), child)
+                };
+                let is_dir = match self.file_repo.stat(owner, &child_path).await? {
+                    Some((_size, is_dir)) => is_dir,
+                    None => false,
+                };
+                result_map.insert(child.to_string(), is_dir);
             }
         }
 
-        children.sort();
-        children.dedup();
-
-        let mut result = Vec::new();
-        for child in children {
-            let child_path = if inner_dir.is_empty() {
-                child.clone()
-            } else {
-                format!("{}/{}", inner_dir.trim_end_matches('/'), child)
-            };
-            let is_dir = match self.file_repo.stat(owner, &child_path).await? {
-                Some((_size, is_dir)) => is_dir,
-                None => false,
-            };
-            result.push((child, is_dir));
-        }
-
+        let mut result: Vec<(String, bool)> = result_map.into_iter().collect();
+        result.sort_by(|a, b| a.0.cmp(&b.0));
         Ok(result)
     }
 
@@ -98,7 +95,7 @@ impl ListUseCase {
             return Ok(res);
         }
 
-        if let Some((owner, inner)) = Self::parse_shared(&resolved) {
+        if let Some((owner, inner)) = PermissionChecker::parse_shared(&resolved) {
             if inner.is_empty() {
                 let allowed = self
                     .shares

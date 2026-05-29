@@ -15,7 +15,10 @@ use crate::database::{
     },
     log_usecases::LogAccessUseCase,
     share_repository::ShareRepository as DbShareRepository,
-    share_usecases::{CreateGrantUseCase, CreateLinkUseCase},
+    share_usecases::{
+        CreateGrantUseCase, CreateLinkUseCase, ListMyGrantsUseCase, ListMyLinksUseCase,
+        RevokeGrantUseCase, RevokeLinkUseCase,
+    },
     user_repository::UserRepository as DbUserRepository,
     user_usecases::{CreateUserUseCase, FindUserByEmailUseCase, FindUserUseCase},
     Database,
@@ -109,15 +112,37 @@ pub async fn setup_injection() -> Result<Services> {
     let create_grant_usecase = Arc::new(CreateGrantUseCase::new(
         Arc::new(db_share_repo.clone()) as Arc<dyn IShareDatabaseRepository>,
     ));
+    let list_my_links_usecase = Arc::new(ListMyLinksUseCase::new(
+        Arc::new(db_share_repo.clone()) as Arc<dyn IShareDatabaseRepository>,
+    ));
+    let list_my_grants_usecase = Arc::new(ListMyGrantsUseCase::new(
+        Arc::new(db_share_repo.clone()) as Arc<dyn IShareDatabaseRepository>,
+    ));
+    let revoke_link_usecase = Arc::new(RevokeLinkUseCase::new(
+        Arc::new(db_share_repo.clone()) as Arc<dyn IShareDatabaseRepository>,
+    ));
+    let revoke_grant_usecase = Arc::new(RevokeGrantUseCase::new(
+        Arc::new(db_share_repo.clone()) as Arc<dyn IShareDatabaseRepository>,
+    ));
     let log_access_usecase = Arc::new(LogAccessUseCase::new(
         Arc::new(db_log_repo.clone()) as Arc<dyn IAccessLogRepository>,
     ));
 
     let auth_service = Arc::new(AuthService::new(
         Arc::clone(&find_user_by_email_usecase),
+        Arc::clone(&find_user_usecase),
         Arc::clone(&create_user_usecase),
     ));
-    let share_service = Arc::new(ShareService::new(Arc::clone(&share_repo)));
+    let share_service = Arc::new(ShareService::new(
+        Arc::clone(&share_repo),
+        db.clone(),
+        Arc::clone(&create_link_usecase),
+        Arc::clone(&create_grant_usecase),
+        Arc::clone(&list_my_links_usecase),
+        Arc::clone(&list_my_grants_usecase),
+        Arc::clone(&revoke_link_usecase),
+        Arc::clone(&revoke_grant_usecase),
+    ));
 
     let git_service = Arc::new(GitService::new(Some(bucket.clone())));
     let compression_service = Arc::new(CompressionService::new());
@@ -125,6 +150,7 @@ pub async fn setup_injection() -> Result<Services> {
     let download_usecase = Arc::new(crate::file::DownloadUseCase::new(
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
         Arc::clone(&share_service),
+        Arc::clone(&auth_service),
     ));
     let upload_usecase = Arc::new(crate::file::UploadUseCase::new(
         storage_root.clone(),
@@ -195,8 +221,10 @@ pub async fn setup_injection() -> Result<Services> {
         restore_usecase,
         purge_usecase,
         find_deleted_files_db_usecase,
+        find_file_by_path_usecase,
         git_service.clone(),
         compression_service,
+        share_service.clone(),
     ));
 
     for (name, pass) in [

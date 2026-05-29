@@ -26,17 +26,6 @@ impl StatUseCase {
         }
     }
 
-    fn parse_shared(resolved: &str) -> Option<(String, String)> {
-        let rest = resolved.strip_prefix("shared/")?;
-        let mut parts = rest.splitn(2, '/');
-        let owner = parts.next()?.to_string();
-        let inner = parts.next().unwrap_or("").to_string();
-        if owner.is_empty() {
-            return None;
-        }
-        Some((owner, inner))
-    }
-
     pub async fn execute(
         &self,
         user: &User,
@@ -53,7 +42,7 @@ impl StatUseCase {
             return Ok(Some((0, true, None)));
         }
 
-        let (size, is_dir) = if let Some((owner, inner)) = Self::parse_shared(&resolved) {
+        let (size, is_dir) = if let Some((owner, inner)) = PermissionChecker::parse_shared(&resolved) {
             if inner.is_empty() {
                 let allowed = self
                     .shares
@@ -91,13 +80,13 @@ impl StatUseCase {
 
         let mut checksum = None;
         if !is_dir {
-            let storage_path = if let Some((owner, inner)) = Self::parse_shared(&resolved) {
+            let storage_path = if let Some((owner, inner)) = PermissionChecker::parse_shared(&resolved) {
                 format!("/shared/{}/{}", owner, inner)
             } else {
                 format!("/{}", resolved)
             };
 
-            let owner_id = if let Some((_owner, _)) = Self::parse_shared(&resolved) {
+            let owner_id = if let Some((_owner, _)) = PermissionChecker::parse_shared(&resolved) {
                 // For shared files, we need the owner's ID. 
                 // But v_effective_permissions view handles this better usually.
                 // For now, let's just use user.id if it's not shared, or skip if shared for simplicity

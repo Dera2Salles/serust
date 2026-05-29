@@ -12,25 +12,25 @@ use std::sync::Arc;
 
 type Aes256CbcDec = Decryptor<Aes256>;
 
+use crate::user::service::AuthService;
+
 pub struct DownloadUseCase {
     file_repo: Arc<dyn IFileRepository>,
     shares: Arc<ShareService>,
+    auth: Arc<AuthService>,
 }
 
 impl DownloadUseCase {
-    pub fn new(file_repo: Arc<dyn IFileRepository>, shares: Arc<ShareService>) -> Self {
-        Self { file_repo, shares }
-    }
-
-    fn parse_shared(resolved: &str) -> Option<(String, String)> {
-        let rest = resolved.strip_prefix("shared/")?;
-        let mut parts = rest.splitn(2, '/');
-        let owner = parts.next()?.to_string();
-        let inner = parts.next().unwrap_or("").to_string();
-        if owner.is_empty() {
-            return None;
+    pub fn new(
+        file_repo: Arc<dyn IFileRepository>,
+        shares: Arc<ShareService>,
+        auth: Arc<AuthService>,
+    ) -> Self {
+        Self {
+            file_repo,
+            shares,
+            auth,
         }
-        Some((owner, inner))
     }
 
     fn decrypt_if_needed(data: Vec<u8>, password_hash: &str) -> Vec<u8> {
@@ -72,9 +72,9 @@ impl DownloadUseCase {
             return Err(DomainError::UnsafePath);
         }
 
-        let password_hash = user.password_hash.clone();
+        let mut password_hash = user.password_hash.clone();
 
-        let data = if let Some((owner, inner)) = Self::parse_shared(&resolved) {
+        let data = if let Some((owner, inner)) = PermissionChecker::parse_shared(&resolved) {
             if !self
                 .shares
                 .can_download(&user.username, &owner, &inner)
@@ -82,6 +82,12 @@ impl DownloadUseCase {
             {
                 return Err(DomainError::PermissionDenied);
             }
+
+            // If it's a shared file, we must use the owner's password hash to decrypt it
+            if let Ok(Some(owner_user)) = self.auth.get_user_by_username(&owner).await {
+                password_hash = owner_user.password_hash;
+            }
+
             self.file_repo.load(&owner, &inner).await?
         } else {
             let _storage_path = format!("/{}", resolved);
@@ -113,7 +119,7 @@ impl DownloadUseCase {
             data
         };
 
-        if let Some((owner, inner)) = Self::parse_shared(&resolved) {
+        if let Some((owner, inner)) = PermissionChecker::parse_shared(&resolved) {
             self.shares
                 .consume_download(&user.username, &owner, &inner)
                 .await?;
