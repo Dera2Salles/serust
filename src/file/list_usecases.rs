@@ -109,7 +109,7 @@ impl ListUseCase {
                 return Ok(self.list_shared_children(user, &owner, "").await?);
             }
 
-            if !self.shares.can_read(&user.username, &owner, &inner).await {
+            if !self.shares.can_discover(&user.username, &owner, &inner).await {
                 return Err(DomainError::PermissionDenied);
             }
             let children = self.list_shared_children(user, &owner, &inner).await?;

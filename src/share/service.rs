@@ -299,10 +299,41 @@ impl ShareService {
         }
         let storage_path = if owner_rel_path.starts_with('/') { owner_rel_path.to_string() } else { format!("/{}", owner_rel_path) };
         
-        // A path is readable if:
-        // 1. It is directly shared.
-        // 2. A parent folder is shared (inherited permission).
-        // 3. It is a parent of a shared item (discovery permission for virtual folders).
+        // A path is readable if it is directly shared OR a parent folder is shared.
+        let query = "
+            SELECT 1 FROM v_effective_permissions p
+            JOIN files f_shared ON f_shared.id = p.file_id
+            JOIN users u_owner ON u_owner.id = f_shared.owner_id
+            JOIN users u_actor ON u_actor.id = p.user_id
+            WHERE u_actor.username = ? 
+              AND u_owner.username = ? 
+              AND p.can_read = 1 
+              AND p.is_valid = 1
+              AND (
+                  f_shared.storage_path = ? 
+                  OR (? || '/') LIKE (f_shared.storage_path || '/%')
+              )
+            LIMIT 1";
+
+        let row = sqlx::query(query)
+            .bind(actor)
+            .bind(owner)
+            .bind(&storage_path)
+            .bind(&storage_path)
+            .fetch_optional(&*self.db.pool)
+            .await
+            .unwrap_or(None);
+
+        row.is_some()
+    }
+
+    pub async fn can_discover(&self, actor: &str, owner: &str, owner_rel_path: &str) -> bool {
+        if actor == owner {
+            return true;
+        }
+        let storage_path = if owner_rel_path.starts_with('/') { owner_rel_path.to_string() } else { format!("/{}", owner_rel_path) };
+        
+        // A path is discoverable if it's readable OR it's a parent of a shared item.
         let query = "
             SELECT 1 FROM v_effective_permissions p
             JOIN files f_shared ON f_shared.id = p.file_id

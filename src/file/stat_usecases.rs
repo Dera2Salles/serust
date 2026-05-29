@@ -57,7 +57,7 @@ impl StatUseCase {
                 }
             }
 
-            if !self.shares.can_read(&user.username, &owner, &inner).await {
+            if !self.shares.can_discover(&user.username, &owner, &inner).await {
                 return Ok(None);
             }
             match self.file_repo.stat(&owner, &inner).await? {
