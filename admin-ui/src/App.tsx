@@ -55,7 +55,7 @@ function App() {
           <img 
             src="/logo.png" 
             alt="Kajy Logo"
-            style={{ width: 40, height: 40, borderRadius: 8, flexShrink: 0, objectFit: 'contain' }}
+            style={{ width: 48, height: 48, borderRadius: 8, flexShrink: 0, objectFit: 'contain' }}
           />
           {!collapsed && (
             <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-win-text)', whiteSpace: 'nowrap' }}>
