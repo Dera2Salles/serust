@@ -5,9 +5,18 @@ use serde::{Serialize, Deserialize};
 use tauri::State;
 use serde_json::Value;
 
-#[derive(Default)]
 struct ServerState {
     child: Option<Child>,
+    sys: System,
+}
+
+impl Default for ServerState {
+    fn default() -> Self {
+        Self {
+            child: None,
+            sys: System::new_all(),
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -75,9 +84,9 @@ fn get_server_status(state: State<'_, Arc<Mutex<ServerState>>>) -> bool {
 }
 
 #[tauri::command]
-fn get_system_info() -> SystemInfo {
-    let mut sys = System::new_all();
-    sys.refresh_all();
+fn get_system_info(state: State<'_, Arc<Mutex<ServerState>>>) -> SystemInfo {
+    let mut state = state.lock().unwrap();
+    state.sys.refresh_all();
 
     let disks = Disks::new_with_refreshed_list();
     let mut total_disk = 0;
@@ -91,8 +100,8 @@ fn get_system_info() -> SystemInfo {
         total_disk,
         used_disk,
         os_name: System::name().unwrap_or_else(|| "Unknown".into()),
-        cpu_usage: sys.global_cpu_usage(),
-        memory_usage: sys.used_memory(),
+        cpu_usage: state.sys.global_cpu_usage(),
+        memory_usage: state.sys.used_memory(),
     }
 }
 
@@ -146,7 +155,7 @@ async fn create_user_db(username: String, email: String, password_raw: String, q
         .await
         .map_err(|e| e.to_string())?;
 
-    sqlx::query("INSERT INTO users (id, username, password_hash, email, storage_quota_bytes, is_active) VALUES (?, ?, ?, ?, ?, 1)")
+    sqlx::query("INSERT INTO users (id, username, password_hash, email, storage_quota_bytes, is_active) VALUES (?, ?, ?, ?, ?, 0)")
         .bind(id)
         .bind(username)
         .bind(password_hash)
@@ -317,25 +326,6 @@ fn save_global_settings(settings: GlobalSettings) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-fn list_host_directory(path: String) -> Result<Vec<Value>, String> {
-    let entries = std::fs::read_dir(&path).map_err(|e| e.to_string())?;
-    let mut list = Vec::new();
-    for entry in entries {
-        if let Ok(entry) = entry {
-            let path = entry.path();
-            let is_dir = path.is_dir();
-            let size = if !is_dir { path.metadata().map(|m| m.len()).unwrap_or(0) } else { 0 };
-            list.push(serde_json::json!({
-                "name": entry.file_name().to_string_lossy(),
-                "is_dir": is_dir,
-                "size": size,
-            }));
-        }
-    }
-    Ok(list)
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let server_state = Arc::new(Mutex::new(ServerState::default()));
@@ -357,8 +347,7 @@ pub fn run() {
             revoke_share_grant_db,
             revoke_share_link_db,
             get_global_settings,
-            save_global_settings,
-            list_host_directory
+            save_global_settings
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

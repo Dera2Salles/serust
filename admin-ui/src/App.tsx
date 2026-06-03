@@ -1,14 +1,13 @@
 import { useState } from 'react';
 import { AdminDashboard } from './components/AdminDashboard';
 import { UserManagement } from './components/UserManagement';
-import { FileExplorer } from './components/FileExplorer';
 import { ServerControl } from './components/ServerControl';
 import { SystemLogs } from './components/SystemLogs';
 import { ActiveSessions } from './components/ActiveSessions';
 import { ShareManagement } from './components/ShareManagement';
 import { GlobalSettings } from './components/GlobalSettings';
 import {
-  LayoutDashboard, Users, FolderTree, Settings, Activity,
+  LayoutDashboard, Users, Settings, Activity,
   Share2, ScrollText, Cpu, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { cn } from './components/OneUI';
@@ -23,7 +22,6 @@ function App() {
     { id: 'users',     label: 'Utilisateurs',  icon: Users,           group: 'main' },
     { id: 'sessions',  label: 'Connexions',    icon: Activity,        group: 'main' },
     { id: 'shares',    label: 'Partages',      icon: Share2,          group: 'data' },
-    { id: 'files',     label: 'Fichiers',      icon: FolderTree,      group: 'data' },
     { id: 'logs',      label: 'Journaux',      icon: ScrollText,      group: 'data' },
     { id: 'settings',  label: 'Paramètres',    icon: Settings,        group: 'settings' },
   ];
@@ -140,7 +138,6 @@ function App() {
         {activeTab === 'users'      && <UserManagement />}
         {activeTab === 'sessions'   && <ActiveSessions />}
         {activeTab === 'shares'     && <ShareManagement />}
-        {activeTab === 'files'      && <FileExplorer />}
         {activeTab === 'logs'       && <SystemLogs />}
         {activeTab === 'settings'   && <GlobalSettings />}
       </main>

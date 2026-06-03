@@ -3,7 +3,13 @@ import { Header, ModernTextField, cn } from './OneUI';
 import { Globe, Shield, Save, RefreshCcw, AlertTriangle, Lock } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 
-interface GlobalSettingsData { allow_registration: boolean; maintenance_mode: boolean; max_user_quota_gb: number; server_name: string; }
+interface GlobalSettingsData { 
+  default_storage_quota_gb: number;
+  allow_public_registration: boolean;
+  allow_public_links: boolean;
+  server_maintenance_mode: boolean;
+  max_upload_size_mb: number;
+}
 
 const SettingRow = ({ label, desc, checked, onChange, danger = false }: { label: string; desc: string; checked: boolean; onChange: () => void; danger?: boolean }) => (
   <div
@@ -32,7 +38,7 @@ export const GlobalSettings: React.FC = () => {
   const fetchSettings = async () => {
     setLoading(true);
     try { setSettings(await invoke<GlobalSettingsData>('get_global_settings')); }
-    catch {} finally { setLoading(false); }
+    catch (e) { console.error(e); } finally { setLoading(false); }
   };
   useEffect(() => { fetchSettings(); }, []);
 
@@ -52,25 +58,6 @@ export const GlobalSettings: React.FC = () => {
         {/* Main settings */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-          {/* Identity */}
-          <div className="fluent-card">
-            <div className="flex items-center gap-3 mb-4">
-              <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--color-accent-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Globe size={16} style={{ color: 'var(--color-accent)' }} />
-              </div>
-              <div>
-                <p style={{ fontWeight: 600, fontSize: 15, margin: 0 }}>Identité de la plateforme</p>
-                <p style={{ fontSize: 12, color: 'var(--color-win-text3)', margin: 0 }}>Nom visible publiquement</p>
-              </div>
-            </div>
-            <ModernTextField
-              label="Nom de l'instance"
-              value={settings?.server_name || ''}
-              onChange={(e: any) => settings && setSettings({ ...settings, server_name: e.target.value })}
-              placeholder="Kajy Cloud Madagascar"
-            />
-          </div>
-
           {/* Toggles */}
           <div className="fluent-card">
             <div className="flex items-center gap-3 mb-4">
@@ -84,15 +71,21 @@ export const GlobalSettings: React.FC = () => {
             </div>
             <SettingRow
               label="Inscriptions ouvertes"
-              desc="Autoriser la création de nouveaux comptes"
-              checked={settings?.allow_registration ?? false}
-              onChange={() => settings && setSettings({ ...settings, allow_registration: !settings.allow_registration })}
+              desc="Autoriser la création de nouveaux comptes par le public"
+              checked={settings?.allow_public_registration ?? false}
+              onChange={() => settings && setSettings({ ...settings, allow_public_registration: !settings.allow_public_registration })}
+            />
+            <SettingRow
+              label="Partages publics"
+              desc="Autoriser la création de liens de partage anonymes"
+              checked={settings?.allow_public_links ?? false}
+              onChange={() => settings && setSettings({ ...settings, allow_public_links: !settings.allow_public_links })}
             />
             <SettingRow
               label="Mode Maintenance"
               desc="Bloquer tous les accès client"
-              checked={settings?.maintenance_mode ?? false}
-              onChange={() => settings && setSettings({ ...settings, maintenance_mode: !settings.maintenance_mode })}
+              checked={settings?.server_maintenance_mode ?? false}
+              onChange={() => settings && setSettings({ ...settings, server_maintenance_mode: !settings.server_maintenance_mode })}
               danger
             />
           </div>
@@ -105,17 +98,31 @@ export const GlobalSettings: React.FC = () => {
               </div>
               <p style={{ fontWeight: 600, fontSize: 15, margin: 0 }}>Limites de ressources</p>
             </div>
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-win-text2)', display: 'block', marginBottom: 6 }}>
-                Quota maximum par utilisateur (GB)
-              </label>
-              <input
-                type="number"
-                className="fluent-input"
-                style={{ maxWidth: 200 }}
-                value={settings?.max_user_quota_gb || 0}
-                onChange={e => settings && setSettings({ ...settings, max_user_quota_gb: Number(e.target.value) })}
-              />
+            <div className="space-y-4">
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-win-text2)', display: 'block', marginBottom: 6 }}>
+                  Quota par défaut (GB)
+                </label>
+                <input
+                  type="number"
+                  className="fluent-input"
+                  style={{ maxWidth: 200 }}
+                  value={settings?.default_storage_quota_gb || 0}
+                  onChange={e => settings && setSettings({ ...settings, default_storage_quota_gb: Number(e.target.value) })}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-win-text2)', display: 'block', marginBottom: 6 }}>
+                  Taille max upload (MB)
+                </label>
+                <input
+                  type="number"
+                  className="fluent-input"
+                  style={{ maxWidth: 200 }}
+                  value={settings?.max_upload_size_mb || 0}
+                  onChange={e => settings && setSettings({ ...settings, max_upload_size_mb: Number(e.target.value) })}
+                />
+              </div>
             </div>
           </div>
         </div>

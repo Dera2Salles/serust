@@ -1,3 +1,4 @@
+use crate::common::config::GlobalSettings;
 use crate::common::error::DomainError;
 use crate::database::domain::DbUser;
 use crate::database::user_usecases::{CreateUserUseCase, FindUserByEmailUseCase, FindUserUseCase};
@@ -11,6 +12,7 @@ pub struct AuthService {
     find_user_by_email: Arc<FindUserByEmailUseCase>,
     find_user_by_username: Arc<FindUserUseCase>,
     create_user: Arc<CreateUserUseCase>,
+    settings: GlobalSettings,
 }
 
 impl AuthService {
@@ -18,11 +20,13 @@ impl AuthService {
         find_user_by_email: Arc<FindUserByEmailUseCase>,
         find_user_by_username: Arc<FindUserUseCase>,
         create_user: Arc<CreateUserUseCase>,
+        settings: GlobalSettings,
     ) -> Self {
         Self {
             find_user_by_email,
             find_user_by_username,
             create_user,
+            settings,
         }
     }
 
@@ -36,16 +40,21 @@ impl AuthService {
         let hash = Self::hash_password(password);
         let normalized_email = email.replace(' ', "");
         match self.find_user_by_email.execute(&normalized_email).await {
-            Ok(Some(db_user)) if db_user.password_hash == hash => Ok(User {
-                id: db_user.id,
-                username: db_user.username,
-                password_hash: db_user.password_hash,
-                email: db_user.email,
-                first_name: db_user.first_name,
-                last_name: db_user.last_name,
-                birth_date: db_user.birth_date,
-                location: db_user.location,
-            }),
+            Ok(Some(db_user)) if db_user.password_hash == hash => {
+                if !db_user.is_active {
+                    return Err(DomainError::Internal("Account pending approval".into()));
+                }
+                Ok(User {
+                    id: db_user.id,
+                    username: db_user.username,
+                    password_hash: db_user.password_hash,
+                    email: db_user.email,
+                    first_name: db_user.first_name,
+                    last_name: db_user.last_name,
+                    birth_date: db_user.birth_date,
+                    location: db_user.location,
+                })
+            },
             _ => Err(DomainError::InvalidCredentials),
         }
     }
@@ -91,8 +100,8 @@ impl AuthService {
             birth_date,
             location,
             created_at: Utc::now(),
-            storage_quota_bytes: 0,
-            is_active: true,
+            storage_quota_bytes: self.settings.default_storage_quota_gb * 1024 * 1024 * 1024,
+            is_active: false,
         };
         self.create_user
             .execute(&dev_user)
