@@ -42,7 +42,7 @@ impl AuthService {
         match self.find_user_by_email.execute(&normalized_email).await {
             Ok(Some(db_user)) if db_user.password_hash == hash => {
                 if !db_user.is_active {
-                    return Err(DomainError::Internal("Account pending approval".into()));
+                    return Err(DomainError::PendingApproval);
                 }
                 Ok(User {
                     id: db_user.id,

@@ -17,8 +17,7 @@ use std::sync::Arc;
 use tracing::info;
 use tracing_subscriber::{prelude::*, EnvFilter};
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+pub async fn run_server() -> anyhow::Result<()> {
     let file_appender = tracing_appender::rolling::never(".", "server.log");
     let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
 

@@ -43,7 +43,9 @@ pub struct Services {
 }
 
 pub async fn setup_injection() -> Result<Services> {
-    let storage_root = PathBuf::from("storage");
+    let storage_root = std::env::var("STORAGE_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("storage"));
     
     let bucket = std::env::var("S3_BUCKET_NAME").unwrap_or_else(|_| "arosaina-storage".to_string());
     info!("Mode Stockage Local activé (Interface S3-compatible)");
@@ -52,7 +54,8 @@ pub async fn setup_injection() -> Result<Services> {
     let share_repo = Arc::new(ShareRepository::new("shares.json").await);
 
     info!("Initialisation de la base de données SQLite...");
-    let db = Database::new("sqlite:development.db").await?;
+    let db_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:development.db".to_string());
+    let db = Database::new(&db_url).await?;
     let settings = crate::common::config::load_config();
 
     let db_user_repo = Arc::new(DbUserRepository::new(db.clone()));

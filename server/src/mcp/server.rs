@@ -301,11 +301,17 @@ async fn handle_http(
 
         return Ok(match state.auth_service.login(email, password).await {
             Ok(user) => json_response(StatusCode::OK, json!(user), &cors_headers),
-            Err(_) => json_response(
-                StatusCode::UNAUTHORIZED,
-                json!({ "error": "Invalid credentials" }),
-                &cors_headers,
-            ),
+            Err(e) => {
+                let status = match e {
+                    crate::common::error::DomainError::PendingApproval => StatusCode::FORBIDDEN,
+                    _ => StatusCode::UNAUTHORIZED,
+                };
+                json_response(
+                    status,
+                    json!({ "error": e.to_string() }),
+                    &cors_headers,
+                )
+            }
         });
     }
 

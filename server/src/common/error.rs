@@ -5,6 +5,9 @@ pub enum DomainError {
     #[error("invalid_credentials")]
     InvalidCredentials,
 
+    #[error("account_pending_approval")]
+    PendingApproval,
+
     #[error("file_not_found")]
     FileNotFound,
 

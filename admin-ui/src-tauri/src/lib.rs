@@ -1,4 +1,3 @@
-use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
 use sysinfo::{Disks, System};
 use serde::{Serialize, Deserialize};
@@ -6,14 +5,14 @@ use tauri::State;
 use serde_json::Value;
 
 struct ServerState {
-    child: Option<Child>,
+    handle: Option<tokio::task::JoinHandle<()>>,
     sys: System,
 }
 
 impl Default for ServerState {
     fn default() -> Self {
         Self {
-            child: None,
+            handle: None,
             sys: System::new_all(),
         }
     }
@@ -38,30 +37,36 @@ struct GlobalSettings {
 }
 
 #[tauri::command]
-fn start_server(state: State<'_, Arc<Mutex<ServerState>>>) -> Result<String, String> {
+async fn start_server(state: State<'_, Arc<Mutex<ServerState>>>) -> Result<String, String> {
     let mut state = state.lock().map_err(|_| "Failed to lock state")?;
-    if let Some(ref mut child) = state.child {
-        if child.try_wait().map(|s| s.is_none()).unwrap_or(false) {
-            return Err("Server is already running".into());
-        }
+    if state.handle.is_some() {
+        return Err("Server is already running".into());
     }
 
-    let child = Command::new("cargo")
-        .args(["run", "--bin", "server"])
-        .current_dir("../..") 
-        .spawn()
-        .map_err(|e| format!("Failed to start server: {}", e))?;
+    let handle = tokio::spawn(async move {
+        // Set environment variables for the internal server
+        if std::env::var("DATABASE_URL").is_err() {
+            std::env::set_var("DATABASE_URL", "sqlite:../../development.db");
+        }
+        if std::env::var("STORAGE_ROOT").is_err() {
+            std::env::set_var("STORAGE_ROOT", "../../storage");
+        }
+        
+        if let Err(e) = tcp_file_server::run_server().await {
+            eprintln!("Internal server error: {}", e);
+        }
+    });
 
-    state.child = Some(child);
-    Ok("Server started".into())
+    state.handle = Some(handle);
+    Ok("Server started internally".into())
 }
 
 #[tauri::command]
 fn stop_server(state: State<'_, Arc<Mutex<ServerState>>>) -> Result<String, String> {
     let mut state = state.lock().map_err(|_| "Failed to lock state")?;
-    if let Some(mut child) = state.child.take() {
-        child.kill().map_err(|e| format!("Failed to kill server: {}", e))?;
-        Ok("Server stopped".into())
+    if let Some(handle) = state.handle.take() {
+        handle.abort();
+        Ok("Server stopped (aborted)".into())
     } else {
         Err("Server is not running".into())
     }
@@ -69,18 +74,8 @@ fn stop_server(state: State<'_, Arc<Mutex<ServerState>>>) -> Result<String, Stri
 
 #[tauri::command]
 fn get_server_status(state: State<'_, Arc<Mutex<ServerState>>>) -> bool {
-    let mut state = state.lock().unwrap();
-    if let Some(ref mut child) = state.child {
-        match child.try_wait() {
-            Ok(None) => true, // Still running
-            _ => {
-                state.child = None;
-                false
-            }
-        }
-    } else {
-        false
-    }
+    let state = state.lock().unwrap();
+    state.handle.is_some()
 }
 
 #[tauri::command]
