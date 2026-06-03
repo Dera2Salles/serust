@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Header, ModernTextField, cn } from './OneUI';
-import { Globe, Shield, Save, RefreshCcw, AlertTriangle, Lock } from 'lucide-react';
+import { Header, cn } from './OneUI';
+import { Shield, Save, RefreshCcw, Lock } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 
 interface GlobalSettingsData { 
@@ -9,6 +9,9 @@ interface GlobalSettingsData {
   allow_public_links: boolean;
   server_maintenance_mode: boolean;
   max_upload_size_mb: number;
+  mcp_port: number;
+  webdav_port: number;
+  s3_port: number;
 }
 
 const SettingRow = ({ label, desc, checked, onChange, danger = false }: { label: string; desc: string; checked: boolean; onChange: () => void; danger?: boolean }) => (
@@ -31,7 +34,7 @@ const SettingRow = ({ label, desc, checked, onChange, danger = false }: { label:
 
 export const GlobalSettings: React.FC = () => {
   const [settings, setSettings] = useState<GlobalSettingsData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [_loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
@@ -98,7 +101,7 @@ export const GlobalSettings: React.FC = () => {
               </div>
               <p style={{ fontWeight: 600, fontSize: 15, margin: 0 }}>Limites de ressources</p>
             </div>
-            <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-win-text2)', display: 'block', marginBottom: 6 }}>
                   Quota par défaut (GB)
@@ -106,7 +109,6 @@ export const GlobalSettings: React.FC = () => {
                 <input
                   type="number"
                   className="fluent-input"
-                  style={{ maxWidth: 200 }}
                   value={settings?.default_storage_quota_gb || 0}
                   onChange={e => settings && setSettings({ ...settings, default_storage_quota_gb: Number(e.target.value) })}
                 />
@@ -118,12 +120,41 @@ export const GlobalSettings: React.FC = () => {
                 <input
                   type="number"
                   className="fluent-input"
-                  style={{ maxWidth: 200 }}
                   value={settings?.max_upload_size_mb || 0}
                   onChange={e => settings && setSettings({ ...settings, max_upload_size_mb: Number(e.target.value) })}
                 />
               </div>
             </div>
+          </div>
+
+          {/* Network Ports */}
+          <div className="fluent-card">
+            <div className="flex items-center gap-3 mb-4">
+              <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--color-accent-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <RefreshCcw size={16} style={{ color: 'var(--color-accent)' }} />
+              </div>
+              <p style={{ fontWeight: 600, fontSize: 15, margin: 0 }}>Configuration Réseau</p>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-win-text2)', display: 'block', marginBottom: 6 }}>Port MCP</label>
+                <input type="number" className="fluent-input" value={settings?.mcp_port || 0}
+                  onChange={e => settings && setSettings({ ...settings, mcp_port: Number(e.target.value) })} />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-win-text2)', display: 'block', marginBottom: 6 }}>Port WebDAV</label>
+                <input type="number" className="fluent-input" value={settings?.webdav_port || 0}
+                  onChange={e => settings && setSettings({ ...settings, webdav_port: Number(e.target.value) })} />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-win-text2)', display: 'block', marginBottom: 6 }}>Port S3</label>
+                <input type="number" className="fluent-input" value={settings?.s3_port || 0}
+                  onChange={e => settings && setSettings({ ...settings, s3_port: Number(e.target.value) })} />
+              </div>
+            </div>
+            <p style={{ fontSize: 11, color: 'var(--color-win-text3)', marginTop: 12 }}>
+              Note : Le redémarrage du serveur est nécessaire pour appliquer les nouveaux ports.
+            </p>
           </div>
         </div>
 

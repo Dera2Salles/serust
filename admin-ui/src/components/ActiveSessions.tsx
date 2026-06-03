@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Header, SoftCard, AroChip, cn } from './OneUI';
-import { Activity, Clock, Globe, Shield, Terminal, ZapOff } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Header, AroChip, cn } from './OneUI';
+import { Activity, Clock, Globe, Terminal, ZapOff } from 'lucide-react';
 
 interface Session {
   peer_addr: String;

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Header, AroChip, ModernTextField, cn } from './OneUI';
-import { Users, UserPlus, Search, Edit3, Trash2, Shield, Mail, Key, X, Check } from 'lucide-react';
+import { Header, AroChip, ModernTextField } from './OneUI';
+import { Users, UserPlus, Search, Edit3, Trash2, Mail, Key, X, Check, RefreshCw } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 
 interface User { 
@@ -8,7 +8,7 @@ interface User {
   username: string; 
   email: string; 
   storage_quota_bytes: number; 
-  is_active: bool; 
+  is_active: boolean; 
   created_at: string; 
 }
 
@@ -52,7 +52,7 @@ const handleCreate = async (e: React.FormEvent) => {
     await invoke('create_user_db', { 
       username: formData.username, 
       email: formData.email, 
-      password_raw: formData.password, 
+      passwordRaw: formData.password, 
       quota: Number(formData.quota_gb) * 1024 * 1024 * 1024 
     });
     setIsCreateOpen(false);
@@ -69,7 +69,7 @@ const handleApprove = async (user: User) => {
       id: user.id, 
       email: user.email, 
       quota: user.storage_quota_bytes, 
-      is_active: true 
+      isActive: true 
     });
     fetchUsers();
   } catch (e) { 
@@ -95,6 +95,31 @@ const handleApprove = async (user: User) => {
   return (
     <div style={{ paddingBottom: 40 }}>
       <Header title="Utilisateurs" subtitle="Gérer les comptes et quotas de stockage" />
+
+      {/* User Stats */}
+      <div style={{ padding: '0 32px 24px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+        <div className="fluent-stat">
+          <div className="flex items-center justify-between">
+            <span style={{ fontSize: 12, color: 'var(--color-win-text3)', fontWeight: 400 }}>Total Utilisateurs</span>
+            <Users size={16} style={{ color: 'var(--color-accent)', opacity: 0.8 }} />
+          </div>
+          <p style={{ fontSize: 26, fontWeight: 600, color: 'var(--color-win-text)', margin: 0 }}>{users.length}</p>
+        </div>
+        <div className="fluent-stat">
+          <div className="flex items-center justify-between">
+            <span style={{ fontSize: 12, color: 'var(--color-win-text3)', fontWeight: 400 }}>Actifs</span>
+            <Check size={16} style={{ color: 'var(--color-success)', opacity: 0.8 }} />
+          </div>
+          <p style={{ fontSize: 26, fontWeight: 600, color: 'var(--color-win-text)', margin: 0 }}>{users.filter(u => u.is_active).length}</p>
+        </div>
+        <div className="fluent-stat">
+          <div className="flex items-center justify-between">
+            <span style={{ fontSize: 12, color: 'var(--color-win-text3)', fontWeight: 400 }}>En attente</span>
+            <RefreshCw size={16} style={{ color: 'var(--color-warning)', opacity: 0.8 }} />
+          </div>
+          <p style={{ fontSize: 26, fontWeight: 600, color: 'var(--color-win-text)', margin: 0 }}>{users.filter(u => !u.is_active).length}</p>
+        </div>
+      </div>
 
       {/* Toolbar */}
       <div style={{ padding: '0 32px 20px', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>

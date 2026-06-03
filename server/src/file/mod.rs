@@ -6,7 +6,6 @@ pub mod git_service;
 pub mod interfaces;
 pub mod list_usecases;
 pub mod local_repository;
-pub mod s3_repository;
 pub mod mkdir_usecases;
 pub mod rename_usecase;
 pub mod service;

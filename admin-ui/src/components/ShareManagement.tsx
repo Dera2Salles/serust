@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Header, SoftCard, AroChip, cn } from './OneUI';
+import { Header, AroChip, cn } from './OneUI';
 import { Share2, Link as LinkIcon, User, Trash2, Calendar, RefreshCw, FileText, ExternalLink, ShieldCheck } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 

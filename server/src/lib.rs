@@ -21,11 +21,11 @@ pub async fn run_server() -> anyhow::Result<()> {
     let file_appender = tracing_appender::rolling::never(".", "server.log");
     let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
 
-    tracing_subscriber::registry()
+    let _ = tracing_subscriber::registry()
         .with(EnvFilter::from_default_env().add_directive("info".parse()?))
         .with(tracing_subscriber::fmt::layer().with_writer(std::io::stdout))
         .with(tracing_subscriber::fmt::layer().with_writer(non_blocking).with_ansi(false))
-        .init();
+        .try_init();
 
     info!("Démarrage du framework TCP...");
 
@@ -34,7 +34,8 @@ pub async fn run_server() -> anyhow::Result<()> {
     let share_service = services.share_service;
     let file_service = services.file_service;
     let db = services.db;
-
+    
+    let settings = crate::common::config::load_config();
 
     let mcp_registry = Arc::new(McpRegistry::new(
         Arc::clone(&file_service),
@@ -49,17 +50,21 @@ pub async fn run_server() -> anyhow::Result<()> {
         auth_service: Arc::clone(&auth_service),
         db: db.clone(),
     });
+    
+    let mcp_addr = format!("0.0.0.0:{}", settings.mcp_port);
     tokio::spawn(async move {
-        if let Err(e) = run_mcp_server(mcp_state, "0.0.0.0:8081").await {
+        if let Err(e) = run_mcp_server(mcp_state, &mcp_addr).await {
             tracing::error!("MCP server error: {}", e);
         }
     });
-    info!("MCP server spawned on 0.0.0.0:8081");
+    info!("MCP server spawned on 0.0.0.0:{}", settings.mcp_port);
 
     let webdav_auth = Arc::clone(&auth_service);
     let webdav_files = Arc::clone(&file_service);
+    let webdav_port = settings.webdav_port;
     tokio::spawn(async move {
-        let addr: std::net::SocketAddr = "0.0.0.0:8083".parse().unwrap();
+        let addr_str = format!("0.0.0.0:{}", webdav_port);
+        let addr: std::net::SocketAddr = addr_str.parse().unwrap();
         if let Ok(listener) = tokio::net::TcpListener::bind(addr).await {
             tracing::info!("WebDAV HTTP server listening on {}", addr);
             loop {
@@ -92,7 +97,8 @@ pub async fn run_server() -> anyhow::Result<()> {
     let s3_auth = Arc::clone(&auth_service);
     let s3_files = Arc::clone(&file_service);
     let s3_shares = Arc::clone(&share_service);
-    let addr: std::net::SocketAddr = "0.0.0.0:8084".parse().unwrap();
+    let s3_addr_str = format!("0.0.0.0:{}", settings.s3_port);
+    let addr: std::net::SocketAddr = s3_addr_str.parse().unwrap();
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!("S3 API server listening on {}", addr);
     loop {

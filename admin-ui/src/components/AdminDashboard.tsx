@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Header, SoftCard, cn } from './OneUI';
+import { useState, useEffect } from 'react';
+import { Header } from './OneUI';
 import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area

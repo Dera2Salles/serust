@@ -8,6 +8,9 @@ pub struct GlobalSettings {
     pub allow_public_links: bool,
     pub server_maintenance_mode: bool,
     pub max_upload_size_mb: i64,
+    pub mcp_port: u16,
+    pub webdav_port: u16,
+    pub s3_port: u16,
 }
 
 impl Default for GlobalSettings {
@@ -18,6 +21,9 @@ impl Default for GlobalSettings {
             allow_public_links: true,
             server_maintenance_mode: false,
             max_upload_size_mb: 500,
+            mcp_port: 8081,
+            webdav_port: 8083,
+            s3_port: 8084,
         }
     }
 }

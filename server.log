@@ -22,3 +22,102 @@
 2026-06-03T10:39:27.256067Z  INFO server: S3 API server listening on 0.0.0.0:8084
 2026-06-03T10:39:27.256213Z  INFO server::mcp::server: MCP server listening on http://0.0.0.0:8081
 2026-06-03T10:39:27.256407Z  INFO server: WebDAV HTTP server listening on 0.0.0.0:8083
+2026-06-03T13:58:52.822586Z  INFO tcp_file_server: Démarrage du framework TCP...
+2026-06-03T13:58:52.822605Z  INFO tcp_file_server::injection: Mode Stockage Local activé (Interface S3-compatible)
+2026-06-03T13:58:52.825295Z  INFO tcp_file_server::injection: Initialisation de la base de données SQLite...
+2026-06-03T13:58:55.028429Z  WARN sqlx::query: slow statement: execution time exceeded alert threshold summary="CREATE TABLE IF NOT …" db.statement="\n\nCREATE TABLE IF NOT EXISTS users (\n  id TEXT PRIMARY KEY,\n  username TEXT UNIQUE NOT NULL,\n  password_hash TEXT NOT NULL,\n  email TEXT UNIQUE NOT NULL,\n  first_name TEXT,\n  last_name TEXT,\n  birth_date TEXT,\n  location TEXT,\n  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n  storage_quota_bytes INTEGER NOT NULL DEFAULT 0,\n  is_active BOOLEAN NOT NULL DEFAULT 0\n);\nCREATE TABLE IF NOT EXISTS admins (\n  user_id TEXT PRIMARY KEY,\n  access_level TEXT NOT NULL DEFAULT 'standard',\n  last_action_at DATETIME,\n  FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE\n);\nCREATE TABLE IF NOT EXISTS files (\n  id TEXT PRIMARY KEY,\n  owner_id TEXT NOT NULL,\n  filename TEXT NOT NULL,\n  storage_path TEXT NOT NULL,\n  size_bytes INTEGER NOT NULL,\n  mime_type TEXT,\n  checksum TEXT,\n  created_at DATETIME NOT NULL,\n  updated_at DATETIME NOT NULL,\n  is_deleted BOOLEAN NOT NULL DEFAULT 0,\n  FOREIGN KEY(owner_id) REFERENCES users(id) ON DELETE CASCADE\n);\nCREATE INDEX IF NOT EXISTS idx_files_owner_path ON files (owner_id, storage_path);\nCREATE INDEX IF NOT EXISTS idx_files_is_deleted ON files (is_deleted);\nCREATE INDEX IF NOT EXISTS idx_files_storage_path ON files (storage_path);\nCREATE TABLE IF NOT EXISTS share_links (\n  id TEXT PRIMARY KEY,\n  file_id TEXT NOT NULL,\n  created_by TEXT NOT NULL,\n  token TEXT UNIQUE NOT NULL,\n  label TEXT,\n  can_read BOOLEAN DEFAULT 1,\n  can_write BOOLEAN DEFAULT 0,\n  can_reshare BOOLEAN DEFAULT 0,\n  max_reads INTEGER,\n  expires_at DATETIME,\n  password_hash TEXT,\n  is_active BOOLEAN DEFAULT 1,\n  FOREIGN KEY(file_id) REFERENCES files(id) ON DELETE CASCADE,\n  FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE CASCADE\n);\nCREATE TABLE IF NOT EXISTS share_grants (\n  id TEXT PRIMARY KEY,\n  file_id TEXT NOT NULL,\n  granted_by TEXT NOT NULL,\n  granted_to TEXT NOT NULL,\n  can_read BOOLEAN NOT NULL,\n  can_write BOOLEAN NOT NULL,\n  can_reshare BOOLEAN NOT NULL,\n  max_reads INTEGER,\n  expires_at DATETIME,\n  granted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n  FOREIGN KEY(file_id) REFERENCES files(id) ON DELETE CASCADE,\n  FOREIGN KEY(granted_by) REFERENCES users(id) ON DELETE CASCADE,\n  FOREIGN KEY(granted_to) REFERENCES users(id) ON DELETE CASCADE\n);\nCREATE TABLE IF NOT EXISTS access_log (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  file_id TEXT NOT NULL,\n  accessed_by TEXT,\n  share_link_id TEXT,\n  grant_id TEXT,\n  action TEXT CHECK(action IN ('read', 'write', 'share')),\n  accessed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n  ip_address TEXT,\n  user_agent TEXT,\n  bytes_transferred INTEGER,\n  FOREIGN KEY(file_id) REFERENCES files(id) ON DELETE CASCADE,\n  FOREIGN KEY(accessed_by) REFERENCES users(id) ON DELETE\n  SET\n    NULL,\n    FOREIGN KEY(share_link_id) REFERENCES share_links(id) ON DELETE\n  SET\n    NULL,\n    FOREIGN KEY(grant_id) REFERENCES share_grants(id) ON DELETE\n  SET\n    NULL\n);\nCREATE TABLE IF NOT EXISTS read_counters (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  share_link_id TEXT UNIQUE,\n  grant_id TEXT UNIQUE,\n  read_count INTEGER NOT NULL DEFAULT 0,\n  last_read_at DATETIME,\n  is_exhausted BOOLEAN NOT NULL DEFAULT 0,\n  refreshed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n  CHECK (\n    (\n      share_link_id IS NOT NULL\n      AND grant_id IS NULL\n    )\n    OR (\n      share_link_id IS NULL\n      AND grant_id IS NOT NULL\n    )\n  )\n);\nCREATE TRIGGER IF NOT EXISTS trg_update_read_counters_link\nAFTER\nINSERT\n  ON access_log\n  WHEN NEW.action = 'read'\n  AND NEW.share_link_id IS NOT NULL\nBEGIN\nINSERT INTO\n  read_counters (\n    share_link_id,\n    read_count,\n    last_read_at,\n    is_exhausted\n  )\nVALUES\n  (\n    NEW.share_link_id,\n    1,\n    NEW.accessed_at,\n    (\n      SELECT\n        CASE\n          WHEN max_reads IS NOT NULL\n          AND 1 >= max_reads THEN 1\n          ELSE 0\n        END\n      FROM\n        share_links\n      WHERE\n        id = NEW.share_link_id\n    )\n  ) ON CONFLICT (share_link_id) DO\nUPDATE\nSET\n  read_count = read_counters.read_count + 1,\n  last_read_at = NEW.accessed_at,\n  is_exhausted = (\n    SELECT\n      CASE\n        WHEN max_reads IS NOT NULL\n        AND read_counters.read_count + 1 >= max_reads THEN 1\n        ELSE 0\n      END\n    FROM\n      share_links\n    WHERE\n      id = NEW.share_link_id\n  );\nEND;\nCREATE TRIGGER IF NOT EXISTS trg_update_read_counters_grant\nAFTER\nINSERT\n  ON access_log\n  WHEN NEW.action = 'read'\n  AND NEW.grant_id IS NOT NULL\nBEGIN\nINSERT INTO\n  read_counters (grant_id, read_count, last_read_at, is_exhausted)\nVALUES\n  (\n    NEW.grant_id,\n    1,\n    NEW.accessed_at,\n    (\n      SELECT\n        CASE\n          WHEN max_reads IS NOT NULL\n          AND 1 >= max_reads THEN 1\n          ELSE 0\n        END\n      FROM\n        share_grants\n      WHERE\n        id = NEW.grant_id\n    )\n  ) ON CONFLICT (grant_id) DO\nUPDATE\nSET\n  read_count = read_counters.read_count + 1,\n  last_read_at = NEW.accessed_at,\n  is_exhausted = (\n    SELECT\n      CASE\n        WHEN max_reads IS NOT NULL\n        AND read_counters.read_count + 1 >= max_reads THEN 1\n        ELSE 0\n      END\n    FROM\n      share_grants\n    WHERE\n      id = NEW.grant_id\n  );\nEND;\nCREATE VIEW IF NOT EXISTS v_effective_permissions AS\nSELECT\n  f.id AS file_id,\n  f.owner_id AS user_id,\n  'owner' AS source,\n  1 AS can_read,\n  1 AS can_write,\n  1 AS can_reshare,\n  NULL AS reads_remaining,\n  0 AS is_expired,\n  1 AS is_valid,\n  NULL AS grant_id,\n  NULL AS link_id\nFROM\n  files f\nUNION\nALL\nSELECT\n  g.file_id,\n  g.granted_to AS user_id,\n  'grant' AS source,\n  g.can_read,\n  g.can_write,\n  g.can_reshare,\n  CASE\n    WHEN g.max_reads IS NULL THEN NULL\n    ELSE g.max_reads - IFNULL(rc.read_count, 0)\n  END AS reads_remaining,\n  CASE\n    WHEN g.expires_at IS NOT NULL\n    AND g.expires_at < CURRENT_TIMESTAMP THEN 1\n    ELSE 0\n  END AS is_expired,\n  CASE\n    WHEN (\n      g.expires_at IS NOT NULL\n      AND g.expires_at < CURRENT_TIMESTAMP\n    )\n    OR (IFNULL(rc.is_exhausted, 0) = 1) THEN 0\n    ELSE 1\n  END AS is_valid,\n  g.id AS grant_id,\n  NULL AS link_id\nFROM\n  share_grants g\n  LEFT JOIN read_counters rc ON rc.grant_id = g.id\nUNION\nALL\nSELECT\n  l.file_id,\n  NULL AS user_id,\n  'link' AS source,\n  l.can_read,\n  l.can_write,\n  l.can_reshare,\n  CASE\n    WHEN l.max_reads IS NULL THEN NULL\n    ELSE l.max_reads - IFNULL(rc.read_count, 0)\n  END AS reads_remaining,\n  CASE\n    WHEN l.expires_at IS NOT NULL\n    AND l.expires_at < CURRENT_TIMESTAMP THEN 1\n    ELSE 0\n  END AS is_expired,\n  CASE\n    WHEN l.is_active = 0\n    OR (\n      l.expires_at IS NOT NULL\n      AND l.expires_at < CURRENT_TIMESTAMP\n    )\n    OR (IFNULL(rc.is_exhausted, 0) = 1) THEN 0\n    ELSE 1\n  END AS is_valid,\n  NULL AS grant_id,\n  l.id AS link_id\nFROM\n  share_links l\n  LEFT JOIN read_counters rc ON rc.share_link_id = l.id;\n" rows_affected=0 rows_returned=0 elapsed=2.199751465s elapsed_secs=2.199751465 slow_threshold=1s
+2026-06-03T13:58:55.229199Z  INFO tcp_file_server::file::git_service: Initializing new Git repository at "../../storage/alice"
+2026-06-03T13:58:55.305181Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : alice
+2026-06-03T13:58:55.465410Z  INFO tcp_file_server::file::git_service: Initializing new Git repository at "../../storage/bob"
+2026-06-03T13:58:55.475867Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : bob
+2026-06-03T13:58:55.634701Z  INFO tcp_file_server::file::git_service: Initializing new Git repository at "../../storage/carol"
+2026-06-03T13:58:55.641477Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : carol
+2026-06-03T13:58:55.792175Z  INFO tcp_file_server::file::git_service: Initializing new Git repository at "../../storage/testuser"
+2026-06-03T13:58:55.794994Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : testuser
+2026-06-03T13:58:55.950827Z  INFO tcp_file_server::file::git_service: Initializing new Git repository at "../../storage/ayanokoji"
+2026-06-03T13:58:55.953699Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : ayanokoji
+2026-06-03T13:58:56.120962Z  INFO tcp_file_server::file::git_service: Initializing new Git repository at "../../storage/developer"
+2026-06-03T13:58:56.127274Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : developer
+2026-06-03T13:58:56.289907Z  INFO tcp_file_server::file::git_service: Initializing new Git repository at "../../storage/dera"
+2026-06-03T13:58:56.292769Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : dera
+2026-06-03T13:58:57.423978Z  INFO tcp_file_server::injection: Données SQLite de développement injectées avec succès.
+2026-06-03T13:58:57.424001Z  INFO tcp_file_server: MCP server spawned on 0.0.0.0:8081
+2026-06-03T13:58:57.424096Z  INFO tcp_file_server::mcp::server: MCP server listening on http://0.0.0.0:8081
+2026-06-03T13:58:57.424128Z  INFO tcp_file_server: S3 API server listening on 0.0.0.0:8084
+2026-06-03T13:58:57.424157Z  INFO tcp_file_server: WebDAV HTTP server listening on 0.0.0.0:8083
+2026-06-03T14:00:54.171780Z  INFO tcp_file_server: Démarrage du framework TCP...
+2026-06-03T14:00:54.171796Z  INFO tcp_file_server::injection: Mode Stockage Local activé (Interface S3-compatible)
+2026-06-03T14:00:54.172201Z  INFO tcp_file_server::injection: Initialisation de la base de données SQLite...
+2026-06-03T14:00:54.253794Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : alice
+2026-06-03T14:00:54.273081Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : bob
+2026-06-03T14:00:54.275114Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : carol
+2026-06-03T14:00:54.276950Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : testuser
+2026-06-03T14:00:54.278154Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : ayanokoji
+2026-06-03T14:00:54.293410Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : developer
+2026-06-03T14:00:54.319955Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : dera
+2026-06-03T14:00:54.320325Z  INFO tcp_file_server: MCP server spawned on 0.0.0.0:8081
+2026-06-03T14:00:54.320434Z  INFO tcp_file_server: S3 API server listening on 0.0.0.0:8084
+2026-06-03T14:00:54.320488Z  INFO tcp_file_server: WebDAV HTTP server listening on 0.0.0.0:8083
+2026-06-03T14:00:54.320549Z  INFO tcp_file_server::mcp::server: MCP server listening on http://0.0.0.0:8081
+2026-06-03T14:14:14.989971Z  INFO tcp_file_server: Démarrage du framework TCP...
+2026-06-03T14:14:14.989997Z  INFO tcp_file_server::injection: Mode Stockage Local activé (Interface S3-compatible)
+2026-06-03T14:14:14.990233Z  INFO tcp_file_server::injection: Initialisation de la base de données SQLite...
+2026-06-03T14:14:15.183386Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : alice
+2026-06-03T14:14:15.184580Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : bob
+2026-06-03T14:14:15.185261Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : carol
+2026-06-03T14:14:15.205704Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : testuser
+2026-06-03T14:14:15.207392Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : ayanokoji
+2026-06-03T14:14:15.227865Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : developer
+2026-06-03T14:14:15.228750Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : dera
+2026-06-03T14:14:15.229056Z  INFO tcp_file_server: MCP server spawned on 0.0.0.0:8081
+2026-06-03T14:14:15.229160Z  INFO tcp_file_server::mcp::server: MCP server listening on http://0.0.0.0:8081
+2026-06-03T14:14:15.229174Z  INFO tcp_file_server: S3 API server listening on 0.0.0.0:8084
+2026-06-03T14:14:15.229198Z  INFO tcp_file_server: WebDAV HTTP server listening on 0.0.0.0:8083
+2026-06-03T14:14:38.859899Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T14:14:39.442024Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T14:14:39.447664Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T14:14:40.960362Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T14:14:48.075110Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T14:14:48.088095Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T14:14:48.647896Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T14:14:49.450387Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T14:14:50.242790Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T14:15:00.570999Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: PUT /arosaina-storage/Screenshot_20260603_132521_Lite.jpg for user dera.ah.14
+2026-06-03T14:15:00.695878Z  INFO tcp_file_server::file::git_service: Initializing new Git repository at "../../storage/dera.ah.14"
+2026-06-03T14:15:01.614830Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T14:15:03.372589Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/Screenshot_20260603_132521_Lite.jpg for user dera.ah.14
+2026-06-03T14:15:18.172140Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: PUT /arosaina-storage/Test/ for user dera.ah.14
+2026-06-03T14:15:18.826955Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T14:34:38.044645Z  INFO tcp_file_server: Démarrage du framework TCP...
+2026-06-03T14:34:38.044661Z  INFO tcp_file_server::injection: Mode Stockage Local activé (Interface S3-compatible)
+2026-06-03T14:34:38.044815Z  INFO tcp_file_server::injection: Initialisation de la base de données SQLite...
+2026-06-03T14:34:38.192693Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : alice
+2026-06-03T14:34:38.211679Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : bob
+2026-06-03T14:34:38.212916Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : carol
+2026-06-03T14:34:38.213773Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : testuser
+2026-06-03T14:34:38.214695Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : ayanokoji
+2026-06-03T14:34:38.215691Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : developer
+2026-06-03T14:34:38.225463Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : dera
+2026-06-03T14:34:38.266651Z  INFO tcp_file_server: MCP server spawned on 0.0.0.0:8081
+2026-06-03T14:34:38.266835Z  INFO tcp_file_server: S3 API server listening on 0.0.0.0:8084
+2026-06-03T14:34:38.266916Z  INFO tcp_file_server: WebDAV HTTP server listening on 0.0.0.0:8083
+2026-06-03T14:34:38.266995Z  INFO tcp_file_server::mcp::server: MCP server listening on http://0.0.0.0:8081
+2026-06-03T14:34:46.641290Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T14:34:46.659010Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T14:34:47.109529Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T14:34:48.495691Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T14:34:49.653469Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T14:34:50.945121Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T14:34:52.400328Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T14:34:54.722964Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/Test/ for user dera.ah.14
+2026-06-03T14:35:04.638514Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: PUT /arosaina-storage/Test/Test-encore/ for user dera.ah.14
+2026-06-03T14:35:05.125900Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/Test/ for user dera.ah.14
+2026-06-03T14:35:27.111425Z  INFO tcp_file_server::mcp::registry: MCP tool call: create_file args={"content":"","filename":"test.txt","path":"/Test/","username":"dera.ah.14@gmail.com"}
+2026-06-03T14:35:27.971144Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/Test/ for user dera.ah.14
+2026-06-03T14:35:30.912654Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/Test/test.txt for user dera.ah.14
+2026-06-03T14:35:50.475566Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T14:35:50.476275Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T14:35:55.031653Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T14:35:55.031960Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T14:36:34.961593Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T14:36:35.746839Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/Screenshot_20260603_132521_Lite.jpg for user dera.ah.14
