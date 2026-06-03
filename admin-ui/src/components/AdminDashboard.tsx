@@ -58,9 +58,9 @@ export const AdminDashboard = () => {
 
   const stats = [
     { label: 'Accès Totaux',     value: data?.total_accesses || 0,                      icon: Activity,    accent: 'var(--color-accent)' },
-    { label: 'Trafic Global',    value: formatBytes(data?.total_bytes_transferred || 0), icon: ArrowUpRight, accent: '#107c10' },
-    { label: 'Fichiers Uniques', value: data?.unique_files_accessed || 0,               icon: HardDrive,   accent: '#7a4100' },
-    { label: 'IPs Visiteurs',    value: data?.unique_ips || 0,                           icon: Users,       accent: '#881798' },
+    { label: 'Trafic Global',    value: formatBytes(data?.total_bytes_transferred || 0), icon: ArrowUpRight, accent: 'var(--color-success)' },
+    { label: 'Fichiers Uniques', value: data?.unique_files_accessed || 0,               icon: HardDrive,   accent: 'var(--color-warning)' },
+    { label: 'IPs Visiteurs',    value: data?.unique_ips || 0,                           icon: Users,       accent: 'var(--color-win-text2)' },
   ];
 
   return (
@@ -144,9 +144,9 @@ export const AdminDashboard = () => {
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={data?.bandwidth_by_day || []} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
                   <defs>
-                    <linearGradient id="gBlue" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor="#0078d4" stopOpacity={0.15} />
-                      <stop offset="95%" stopColor="#0078d4" stopOpacity={0} />
+                    <linearGradient id="gMono" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="var(--color-accent)" stopOpacity={0.15} />
+                      <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-win-stroke)" vertical={false} />
@@ -165,8 +165,8 @@ export const AdminDashboard = () => {
                     labelStyle={{ color: 'var(--color-win-text2)', marginBottom: 4, fontSize: 12 }}
                     cursor={{ stroke: 'var(--color-accent)', strokeWidth: 1.5, strokeDasharray: '4 4' }}
                   />
-                  <Area type="monotone" dataKey="bytes_total" stroke="#0078d4" strokeWidth={2}
-                    fillOpacity={1} fill="url(#gBlue)" animationDuration={1200} />
+                  <Area type="monotone" dataKey="bytes_total" stroke="var(--color-accent)" strokeWidth={2}
+                    fillOpacity={1} fill="url(#gMono)" animationDuration={1200} />
                 </AreaChart>
               </ResponsiveContainer>
             )}

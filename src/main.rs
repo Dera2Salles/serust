@@ -15,12 +15,17 @@ use mcp::{
 };
 use std::sync::Arc;
 use tracing::info;
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{prelude::*, EnvFilter};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env().add_directive("info".parse()?))
+    let file_appender = tracing_appender::rolling::never(".", "server.log");
+    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+
+    tracing_subscriber::registry()
+        .with(EnvFilter::from_default_env().add_directive("info".parse()?))
+        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stdout))
+        .with(tracing_subscriber::fmt::layer().with_writer(non_blocking).with_ansi(false))
         .init();
 
     info!("Démarrage du framework TCP...");

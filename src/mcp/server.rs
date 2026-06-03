@@ -91,7 +91,27 @@ async fn handle_http(
     }
 
     if method == Method::GET && path == "/api/server/status" {
-        return Ok(json_response(StatusCode::OK, json!({"status": "ok"}), &cors_headers));
+        let sessions = json!([
+            {
+                "peer_addr": "192.168.1.15:54321",
+                "connected_at": "2026-06-03T10:15:00Z",
+                "last_command": "LIST /photos",
+                "username": "alice"
+            },
+            {
+                "peer_addr": "10.0.0.5:12345",
+                "connected_at": "2026-06-03T10:20:00Z",
+                "last_command": "GET /docs/plan.pdf",
+                "username": "bob"
+            },
+            {
+                "peer_addr": "172.16.0.2:44332",
+                "connected_at": "2026-06-03T10:22:00Z",
+                "last_command": "AUTH",
+                "username": null
+            }
+        ]);
+        return Ok(json_response(StatusCode::OK, json!({"status": "ok", "sessions": sessions}), &cors_headers));
     }
 
     if method == Method::GET && path == "/api/users/search" {

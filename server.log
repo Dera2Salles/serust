@@ -1,0 +1,109 @@
+2026-06-03T06:47:06.823943Z  INFO server: Démarrage du framework TCP...
+2026-06-03T06:47:06.824019Z  INFO server::injection: Mode Stockage Local activé (Interface S3-compatible)
+2026-06-03T06:47:06.894101Z  INFO server::injection: Initialisation de la base de données SQLite...
+2026-06-03T06:47:09.612784Z  WARN sqlx::query: slow statement: execution time exceeded alert threshold summary="INSERT INTO users (id, …" db.statement="\n\nINSERT INTO\n  users (\n    id,\n    username,\n    password_hash,\n    email,\n    first_name,\n    last_name,\n    birth_date,\n    location,\n    created_at,\n    storage_quota_bytes,\n    is_active\n  )\nVALUES\n  (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n" rows_affected=0 rows_returned=0 elapsed=2.122473045s elapsed_secs=2.122473045 slow_threshold=1s
+2026-06-03T06:47:10.569391Z  INFO server::injection: Utilisateur prêt avec remote S3 : alice
+2026-06-03T06:47:10.594266Z  INFO server::injection: Utilisateur prêt avec remote S3 : bob
+2026-06-03T06:47:10.618561Z  INFO server::injection: Utilisateur prêt avec remote S3 : carol
+2026-06-03T06:47:10.869595Z  INFO server::injection: Utilisateur prêt avec remote S3 : testuser
+2026-06-03T06:47:11.150474Z  INFO server::injection: Utilisateur prêt avec remote S3 : ayanokoji
+2026-06-03T06:47:11.164567Z  INFO server::injection: Utilisateur prêt avec remote S3 : developer
+2026-06-03T06:47:11.977184Z  INFO server::injection: Utilisateur prêt avec remote S3 : dera
+2026-06-03T06:47:11.978049Z  INFO server: MCP server spawned on 0.0.0.0:8081
+2026-06-03T06:47:11.978260Z  INFO server::mcp::server: MCP server listening on http://0.0.0.0:8081
+2026-06-03T06:47:11.978504Z  INFO server: S3 API server listening on 0.0.0.0:8084
+2026-06-03T06:47:11.978534Z  INFO server: WebDAV HTTP server listening on 0.0.0.0:8083
+2026-06-03T07:54:33.319297Z  INFO server: Démarrage du framework TCP...
+2026-06-03T07:54:33.319381Z  INFO server::injection: Mode Stockage Local activé (Interface S3-compatible)
+2026-06-03T07:54:33.319679Z  INFO server::injection: Initialisation de la base de données SQLite...
+2026-06-03T07:54:33.477877Z  INFO server::injection: Utilisateur prêt avec remote S3 : alice
+2026-06-03T07:54:33.536892Z  INFO server::injection: Utilisateur prêt avec remote S3 : bob
+2026-06-03T07:54:33.593429Z  INFO server::injection: Utilisateur prêt avec remote S3 : carol
+2026-06-03T07:54:33.945147Z  INFO server::injection: Utilisateur prêt avec remote S3 : testuser
+2026-06-03T07:54:34.081558Z  INFO server::injection: Utilisateur prêt avec remote S3 : ayanokoji
+2026-06-03T07:54:34.128831Z  INFO server::injection: Utilisateur prêt avec remote S3 : developer
+2026-06-03T07:54:34.174418Z  INFO server::injection: Utilisateur prêt avec remote S3 : dera
+2026-06-03T07:54:34.175107Z  INFO server: MCP server spawned on 0.0.0.0:8081
+2026-06-03T07:54:34.175221Z  INFO server::mcp::server: MCP server listening on http://0.0.0.0:8081
+2026-06-03T07:54:34.175308Z  INFO server: S3 API server listening on 0.0.0.0:8084
+2026-06-03T07:54:34.175391Z  INFO server: WebDAV HTTP server listening on 0.0.0.0:8083
+2026-06-03T07:56:05.879178Z  INFO server::mcp::registry: MCP tool call: list_directory args={"path":"/","username":"admin_dev"}
+2026-06-03T07:56:05.881378Z  INFO server::mcp::registry: MCP tool call: list_directory args={"path":"/","username":"admin_dev"}
+2026-06-03T08:15:03.227566Z  INFO server: Démarrage du framework TCP...
+2026-06-03T08:15:03.227657Z  INFO server::injection: Mode Stockage Local activé (Interface S3-compatible)
+2026-06-03T08:15:03.229188Z  INFO server::injection: Initialisation de la base de données SQLite...
+2026-06-03T08:15:03.318812Z  INFO server::injection: Utilisateur prêt avec remote S3 : alice
+2026-06-03T08:15:03.336713Z  INFO server::injection: Utilisateur prêt avec remote S3 : bob
+2026-06-03T08:15:03.352949Z  INFO server::injection: Utilisateur prêt avec remote S3 : carol
+2026-06-03T08:15:03.371277Z  INFO server::injection: Utilisateur prêt avec remote S3 : testuser
+2026-06-03T08:15:03.388746Z  INFO server::injection: Utilisateur prêt avec remote S3 : ayanokoji
+2026-06-03T08:15:03.390284Z  INFO server::injection: Utilisateur prêt avec remote S3 : developer
+2026-06-03T08:15:03.391592Z  INFO server::injection: Utilisateur prêt avec remote S3 : dera
+2026-06-03T08:15:03.392277Z  INFO server: MCP server spawned on 0.0.0.0:8081
+2026-06-03T08:15:03.392393Z  INFO server::mcp::server: MCP server listening on http://0.0.0.0:8081
+2026-06-03T08:15:03.392460Z  INFO server: S3 API server listening on 0.0.0.0:8084
+2026-06-03T08:15:03.392513Z  INFO server: WebDAV HTTP server listening on 0.0.0.0:8083
+2026-06-03T08:15:38.564753Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:15:39.205894Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:15:39.217900Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:15:41.233080Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:15:46.759058Z  INFO server::mcp::registry: MCP tool call: get_storage_stats args={"username":"dera.ah.14"}
+2026-06-03T08:15:54.074446Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:15:54.074924Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:16:12.535914Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:16:13.503788Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:16:14.750650Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:16:15.816625Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:16:17.789105Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:16:19.665529Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/20260526_163245.jpg for user dera.ah.14
+2026-06-03T08:16:40.175513Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:16:40.176251Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:16:40.776537Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:16:48.396377Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:16:49.978891Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:16:52.433598Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:16:52.946179Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:18:52.109927Z  INFO server: Démarrage du framework TCP...
+2026-06-03T08:18:52.110015Z  INFO server::injection: Mode Stockage Local activé (Interface S3-compatible)
+2026-06-03T08:18:52.110292Z  INFO server::injection: Initialisation de la base de données SQLite...
+2026-06-03T08:18:52.124229Z  INFO server::injection: Utilisateur prêt avec remote S3 : alice
+2026-06-03T08:18:52.125000Z  INFO server::injection: Utilisateur prêt avec remote S3 : bob
+2026-06-03T08:18:52.125616Z  INFO server::injection: Utilisateur prêt avec remote S3 : carol
+2026-06-03T08:18:52.126224Z  INFO server::injection: Utilisateur prêt avec remote S3 : testuser
+2026-06-03T08:18:52.126818Z  INFO server::injection: Utilisateur prêt avec remote S3 : ayanokoji
+2026-06-03T08:18:52.127707Z  INFO server::injection: Utilisateur prêt avec remote S3 : developer
+2026-06-03T08:18:52.129768Z  INFO server::injection: Utilisateur prêt avec remote S3 : dera
+2026-06-03T08:18:52.130487Z  INFO server: MCP server spawned on 0.0.0.0:8081
+2026-06-03T08:18:52.130563Z  INFO server::mcp::server: MCP server listening on http://0.0.0.0:8081
+2026-06-03T08:18:52.130598Z  INFO server: S3 API server listening on 0.0.0.0:8084
+2026-06-03T08:18:52.130649Z  INFO server: WebDAV HTTP server listening on 0.0.0.0:8083
+2026-06-03T08:18:52.714380Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:21:11.871089Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:21:12.670195Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:21:13.434913Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:21:16.930768Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:21:17.762394Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:21:18.402310Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:21:18.967384Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:21:18.978383Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:21:19.476486Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:21:35.432855Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:21:42.615527Z  INFO server: Démarrage du framework TCP...
+2026-06-03T08:21:42.615616Z  INFO server::injection: Mode Stockage Local activé (Interface S3-compatible)
+2026-06-03T08:21:42.615899Z  INFO server::injection: Initialisation de la base de données SQLite...
+2026-06-03T08:21:42.630491Z  INFO server::injection: Utilisateur prêt avec remote S3 : alice
+2026-06-03T08:21:42.631334Z  INFO server::injection: Utilisateur prêt avec remote S3 : bob
+2026-06-03T08:21:42.631922Z  INFO server::injection: Utilisateur prêt avec remote S3 : carol
+2026-06-03T08:21:42.632488Z  INFO server::injection: Utilisateur prêt avec remote S3 : testuser
+2026-06-03T08:21:42.633099Z  INFO server::injection: Utilisateur prêt avec remote S3 : ayanokoji
+2026-06-03T08:21:42.633893Z  INFO server::injection: Utilisateur prêt avec remote S3 : developer
+2026-06-03T08:21:42.634475Z  INFO server::injection: Utilisateur prêt avec remote S3 : dera
+2026-06-03T08:21:42.634940Z  INFO server: MCP server spawned on 0.0.0.0:8081
+2026-06-03T08:21:42.635063Z  INFO server::mcp::server: MCP server listening on http://0.0.0.0:8081
+2026-06-03T08:21:42.635077Z  INFO server: S3 API server listening on 0.0.0.0:8084
+2026-06-03T08:21:42.635099Z  INFO server: WebDAV HTTP server listening on 0.0.0.0:8083
+2026-06-03T08:21:43.053027Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:23:03.733572Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:23:03.737533Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:26:33.811715Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-03T08:26:34.164668Z  INFO server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14

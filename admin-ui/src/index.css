@@ -1,38 +1,38 @@
 @import "tailwindcss";
 
 @theme {
-  /* === Windows 11 Fluent Design System === */
+  /* === Minimalist Gray & White Theme === */
   
-  /* Backgrounds - Mica/Acrylic layered system */
-  --color-win-bg:        #f3f3f3;   /* Page background (solid mica base) */
-  --color-win-surface:   #ffffff;   /* Card / panel surface */
-  --color-win-nav:       #ebebeb;   /* Nav sidebar */
-  --color-win-nav-hover: #e0e0e0;   /* Nav item hover */
-  --color-win-titlebar:  #f8f8f8;   /* Titlebar strip */
-  --color-win-stroke:    #e0e0e0;   /* Borders / dividers */
-  --color-win-stroke2:   #c8c8c8;   /* Stronger border */
-  --color-win-overlay:   rgba(255,255,255,0.7); /* Acrylic overlay */
+  /* Backgrounds */
+  --color-win-bg:        #f9f9f9;   /* Background ultra-light gray */
+  --color-win-surface:   #ffffff;   /* Pure white for cards */
+  --color-win-nav:       #f2f2f2;   /* Soft gray for sidebar */
+  --color-win-nav-hover: #e8e8e8;   /* Nav item hover */
+  --color-win-titlebar:  #ffffff;
+  --color-win-stroke:    #e5e5e5;   /* Subtle borders */
+  --color-win-stroke2:   #d4d4d4;   /* Stronger borders */
+  --color-win-overlay:   rgba(255,255,255,0.8);
 
   /* Text hierarchy */
-  --color-win-text:      #1a1a1a;   /* Primary */
-  --color-win-text2:     #5a5a5a;   /* Secondary */
-  --color-win-text3:     #8a8a8a;   /* Tertiary/caption */
-  --color-win-text4:     #b0b0b0;   /* Disabled */
+  --color-win-text:      #111111;   /* Primary black/gray */
+  --color-win-text2:     #444444;   /* Secondary gray */
+  --color-win-text3:     #777777;   /* Tertiary gray */
+  --color-win-text4:     #aaaaaa;   /* Disabled */
 
-  /* Fluent accent - Windows blue */
-  --color-accent:        #0078d4;   /* Windows accent */
-  --color-accent-light:  #0067b8;
-  --color-accent-bg:     #cce4f7;   /* Accent tint bg */
-  --color-accent-subtle: #e8f2fb;   /* Very subtle tint */
+  /* Monochrome accent */
+  --color-accent:        #1a1a1a;   /* Charcoal black */
+  --color-accent-light:  #333333;
+  --color-accent-bg:     #e0e0e0;   /* Light gray accent bg */
+  --color-accent-subtle: #f0f0f0;   /* Very subtle gray */
 
-  /* Status colors - Windows style */
-  --color-success:       #107c10;
-  --color-success-bg:    #dff0d8;
-  --color-warning:       #7a4100;
-  --color-warning-bg:    #fff3cd;
-  --color-error:         #c42b1c;
-  --color-error-bg:      #fde7e9;
-  --color-info:          #0078d4;
+  /* Desaturated status colors */
+  --color-success:       #2d5a27;   /* Forest green (muted) */
+  --color-success-bg:    #eef5ed;
+  --color-warning:       #5a4a27;   /* Bronze (muted) */
+  --color-warning-bg:    #f7f4ec;
+  --color-error:         #5a2727;   /* Deep red (muted) */
+  --color-error-bg:      #f5eeee;
+  --color-info:          #444444;
 
   /* Corner radius - Fluent (more subtle than OneUI) */
   --radius-sm:  4px;

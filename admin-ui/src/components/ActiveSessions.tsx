@@ -41,7 +41,7 @@ export const ActiveSessions = () => {
       <div className="px-8 grid grid-cols-1 gap-5">
         {loading && sessions.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 opacity-40">
-             <div className="w-10 h-10 border-4 border-[--color-accent]/20 border-t-blue rounded-full animate-spin mb-4" />
+             <div className="w-10 h-10 border-4 border-[--color-accent]/20 border-t-[--color-accent] rounded-full animate-spin mb-4" />
              <p className="text-[--color-win-text3] font-semibold uppercase text-[10px] tracking-widest">Écoute du port 8081...</p>
           </div>
         ) : sessions.length === 0 ? (

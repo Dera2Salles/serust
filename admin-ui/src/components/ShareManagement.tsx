@@ -88,7 +88,7 @@ export const ShareManagement = () => {
                 <div className="flex items-center gap-7">
                   <div className={cn(
                     "w-16 h-16 rounded-lg flex items-center justify-center shadow-lg transition-all",
-                    isLink ? "bg-mauve/5 text-mauve" : "bg-[--color-accent]/5 text-[--color-accent]"
+                    isLink ? "bg-[--color-win-nav] text-[--color-win-text2]" : "bg-[--color-accent]/5 text-[--color-accent]"
                   )}>
                     {isLink ? <LinkIcon size={28} /> : <User size={28} />}
                   </div>
@@ -100,7 +100,7 @@ export const ShareManagement = () => {
                       </h4>
                       <AroChip 
                         label={isLink ? "Lien Public" : "Privé"} 
-                        color={isLink ? "mauve" : "blue"} 
+                        color={isLink ? "overlay2" : "blue"} 
                       />
                       {share.is_active === false && <AroChip label="Inactif" color="red" />}
                     </div>
@@ -111,7 +111,7 @@ export const ShareManagement = () => {
                       </span>
                       <span className="flex items-center gap-2">
                         <ExternalLink size={14} className="opacity-40" />
-                        Pour : <strong className={cn("font-semibold tracking-tight", isLink ? "text-mauve" : "text-[--color-win-text]")}>{share.grantee}</strong>
+                        Pour : <strong className={cn("font-semibold tracking-tight", isLink ? "text-[--color-win-text2]" : "text-[--color-win-text]")}>{share.grantee}</strong>
                       </span>
                       <span className="flex items-center gap-1.5 opacity-60">
                         <Calendar size={14} /> 
@@ -126,7 +126,7 @@ export const ShareManagement = () => {
                      <p className="text-[10px] font-semibold uppercase tracking-widest text-[--color-win-text3] opacity-40 mb-1">Permissions</p>
                      <div className="flex gap-1">
                         <span className={cn("px-2 py-0.5 rounded text-[9px] font-semibold", share.can_read ? "bg-[--color-success]/10 text-[--color-success]" : "bg-[--color-error]/10 text-[--color-error]")}>READ</span>
-                        <span className={cn("px-2 py-0.5 rounded text-[9px] font-semibold", share.can_write ? "bg-peach/10 text-peach" : "bg-[--color-error]/10 text-[--color-error]")}>WRITE</span>
+                        <span className={cn("px-2 py-0.5 rounded text-[9px] font-semibold", share.can_write ? "bg-[--color-warning]/10 text-[--color-warning]" : "bg-[--color-error]/10 text-[--color-error]")}>WRITE</span>
                      </div>
                   </div>
                   <button 

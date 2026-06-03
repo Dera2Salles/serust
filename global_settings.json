@@ -1,0 +1,7 @@
+{
+  "default_storage_quota_gb": 5,
+  "allow_public_registration": true,
+  "allow_public_links": true,
+  "server_maintenance_mode": false,
+  "max_upload_size_mb": 500
+}
