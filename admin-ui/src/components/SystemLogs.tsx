@@ -19,10 +19,10 @@ export const SystemLogs: React.FC = () => {
   useEffect(() => { if (autoScroll && scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [logs, autoScroll]);
 
   const getLineStyle = (line: string): React.CSSProperties => {
-    if (line.includes('ERROR') || line.includes('error')) return { color: 'var(--color-error)' };
-    if (line.includes('WARN') || line.includes('warn')) return { color: 'var(--color-warning)' };
-    if (line.includes('INFO') || line.includes('info')) return { color: 'var(--color-success)' };
-    return { color: 'var(--color-win-text2)' };
+    if (line.includes('ERROR') || line.includes('error')) return { color: '#c42b1c', fontWeight: 600 };
+    if (line.includes('WARN') || line.includes('warn')) return { color: '#7a4100', fontWeight: 600 };
+    if (line.includes('INFO') || line.includes('info')) return { color: '#107c10', fontWeight: 500 };
+    return { color: 'var(--color-win-text)' };
   };
 
   return (
@@ -54,12 +54,13 @@ export const SystemLogs: React.FC = () => {
           style={{
             height: 480,
             overflow: 'auto',
-            background: '#1e1e1e',
-            border: '1px solid #333',
+            background: 'var(--color-win-surface)',
+            border: '1px solid var(--color-win-stroke2)',
             padding: '16px 20px',
             fontFamily: "'Cascadia Code', 'Consolas', 'Courier New', monospace",
             fontSize: 12,
             lineHeight: 1.6,
+            boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)',
           }}
         >
           {logs.map((line, i) => (

@@ -52,15 +52,11 @@ function App() {
           className="flex items-center gap-3 px-3 mb-3"
           style={{ height: 48, flexShrink: 0 }}
         >
-          <div
-            style={{
-              width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-              background: 'var(--color-accent)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            <span style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>K</span>
-          </div>
+          <img 
+            src="/logo.png" 
+            alt="Kajy Logo"
+            style={{ width: 40, height: 40, borderRadius: 8, flexShrink: 0, objectFit: 'contain' }}
+          />
           {!collapsed && (
             <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-win-text)', whiteSpace: 'nowrap' }}>
               Kajy Admin
