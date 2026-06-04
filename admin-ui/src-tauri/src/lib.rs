@@ -119,10 +119,16 @@ async fn get_users_from_db() -> Result<Vec<Value>, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    let rows = sqlx::query("SELECT id, username, email, is_active, storage_quota_bytes, created_at FROM users")
-        .fetch_all(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    let rows = sqlx::query(
+        "SELECT u.id, u.username, u.email, u.is_active, u.storage_quota_bytes, u.created_at, \
+         COALESCE(SUM(f.size_bytes), 0) as storage_used_bytes \
+         FROM users u \
+         LEFT JOIN files f ON f.owner_id = u.id AND f.is_deleted = 0 \
+         GROUP BY u.id"
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
 
     let mut users = Vec::new();
     for r in rows {
@@ -132,6 +138,7 @@ async fn get_users_from_db() -> Result<Vec<Value>, String> {
             "email": r.get::<String, _>("email"),
             "is_active": r.get::<bool, _>("is_active"),
             "storage_quota_bytes": r.get::<i64, _>("storage_quota_bytes"),
+            "storage_used_bytes": r.get::<i64, _>("storage_used_bytes"),
             "created_at": r.get::<chrono::DateTime<chrono::Utc>, _>("created_at"),
         }));
     }

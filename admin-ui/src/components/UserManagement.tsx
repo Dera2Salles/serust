@@ -8,9 +8,18 @@ interface User {
   username: string; 
   email: string; 
   storage_quota_bytes: number; 
+  storage_used_bytes: number;
   is_active: boolean; 
   created_at: string; 
 }
+
+const formatSize = (bytes: number) => {
+  if (bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let val = bytes, idx = 0;
+  while (val >= 1024 && idx < units.length - 1) { val /= 1024; idx++; }
+  return `${val.toFixed(1)} ${units[idx]}`;
+};
 
 export const UserManagement = () => {
   const [users, setUsers] = useState<User[]>([]);
@@ -141,11 +150,11 @@ const handleApprove = async (user: User) => {
       {/* Table header */}
       <div style={{ padding: '0 32px' }}>
         <div style={{
-          display: 'grid', gridTemplateColumns: '2fr 2fr 100px 100px 120px',
+          display: 'grid', gridTemplateColumns: '1.5fr 1.8fr 180px 100px 120px',
           padding: '6px 16px', marginBottom: 4,
           fontSize: 12, fontWeight: 600, color: 'var(--color-win-text3)',
         }}>
-          <span>Utilisateur</span><span>Email</span><span>Quota</span><span>Statut</span><span>Actions</span>
+          <span>Utilisateur</span><span>Email</span><span>Stockage (Utilisé/Total)</span><span>Statut</span><span>Actions</span>
         </div>
 
         {/* Rows */}
@@ -163,7 +172,7 @@ const handleApprove = async (user: User) => {
             <div key={user.id}>
               {i > 0 && <div className="fluent-divider" style={{ margin: '0 16px' }} />}
               <div style={{
-                display: 'grid', gridTemplateColumns: '2fr 2fr 100px 100px 120px',
+                display: 'grid', gridTemplateColumns: '1.5fr 1.8fr 180px 100px 120px',
                 padding: '10px 16px', alignItems: 'center',
                 transition: 'background 0.1s', cursor: 'default',
               }}
@@ -186,8 +195,22 @@ const handleApprove = async (user: User) => {
                 </div>
                 {/* Email */}
                 <span style={{ fontSize: 13, color: 'var(--color-win-text2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</span>
-                {/* Quota */}
-                <span style={{ fontSize: 13, color: 'var(--color-win-text2)' }}>{(user.storage_quota_bytes / (1024**3)).toFixed(1)} GB</span>
+                {/* Storage */}
+                <div className="flex flex-col gap-1 pr-4">
+                  <div className="flex justify-between text-[11px] font-medium text-[--color-win-text2]">
+                    <span>{formatSize(user.storage_used_bytes)}</span>
+                    <span className="opacity-50">/ {formatSize(user.storage_quota_bytes)}</span>
+                  </div>
+                  <div className="fluent-progress">
+                    <div 
+                      className="fluent-progress-fill" 
+                      style={{ 
+                        width: `${Math.min(100, (user.storage_used_bytes / user.storage_quota_bytes) * 100)}%`,
+                        background: (user.storage_used_bytes / user.storage_quota_bytes) > 0.9 ? 'var(--color-error)' : 'var(--color-accent)'
+                      }} 
+                    />
+                  </div>
+                </div>
                 {/* Status */}
                 <span>
                   <AroChip 
