@@ -401,3 +401,93 @@
 2026-06-07T07:16:04.004605Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
 2026-06-07T07:16:04.005504Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
 2026-06-07T07:16:20.363600Z  INFO tcp_file_server::mcp::registry: MCP tool call: get_user_profile args={"username":"dera.ah.14"}
+2026-06-07T07:24:23.862294Z  INFO tcp_file_server::mcp::registry: MCP tool call: get_user_profile args={"username":"dera.ah.14"}
+2026-06-07T07:24:27.912857Z  INFO tcp_file_server::mcp::registry: MCP tool call: update_user_profile args={"birth_date":"01/01/2000","first_name":"Dera2salles","last_name":"De Salles","location":"TanaMG","username":"dera.ah.14"}
+2026-06-07T07:24:31.338710Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:24:32.692637Z  INFO tcp_file_server::mcp::registry: MCP tool call: get_user_profile args={"username":"dera.ah.14"}
+2026-06-07T07:24:56.144289Z  INFO tcp_file_server::mcp::registry: MCP tool call: get_user_profile args={"username":"dera.ah.14"}
+2026-06-07T07:24:58.194912Z  INFO tcp_file_server::mcp::registry: MCP tool call: get_user_profile args={"username":"dera.ah.14"}
+2026-06-07T07:25:15.830026Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:25:17.349429Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:25:17.355844Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:25:18.992464Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:25:19.719293Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:25:19.719806Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:25:23.532010Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:25:29.069671Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:25:29.070301Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:25:34.910468Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:25:35.520007Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:25:35.524497Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:25:35.957731Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:25:37.253719Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/Test/ for user dera.ah.14
+2026-06-07T07:25:38.442850Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:27:04.170277Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:27:04.170282Z  INFO tcp_file_server::mcp::registry: MCP tool call: get_user_profile args={"username":"dera.ah.14"}
+2026-06-07T07:27:04.857186Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T08:36:32.787754Z  INFO tcp_file_server: Démarrage du framework TCP...
+2026-06-07T08:36:32.787778Z  INFO tcp_file_server::injection: Mode Stockage Local activé (Interface S3-compatible)
+2026-06-07T08:36:32.787948Z  INFO tcp_file_server::injection: Initialisation de la base de données SQLite...
+2026-06-07T08:36:34.017886Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : alice
+2026-06-07T08:36:34.303811Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : bob
+2026-06-07T08:36:34.365012Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : carol
+2026-06-07T08:36:34.371010Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : testuser
+2026-06-07T08:36:34.425641Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : ayanokoji
+2026-06-07T08:36:34.446332Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : developer
+2026-06-07T08:36:34.490924Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : dera
+2026-06-07T08:36:34.491563Z  INFO tcp_file_server: MCP server spawned on 0.0.0.0:8081
+2026-06-07T08:36:34.491796Z  INFO tcp_file_server: S3 API server listening on 0.0.0.0:8084
+2026-06-07T08:36:34.491839Z  INFO tcp_file_server::mcp::server: MCP server listening on http://0.0.0.0:8081
+2026-06-07T08:36:34.491980Z  INFO tcp_file_server: WebDAV HTTP server listening on 0.0.0.0:8083
+2026-06-07T08:36:40.693547Z  INFO tcp_file_server::mcp::registry: MCP tool call: get_user_profile args={"username":"dera.ah.14"}
+2026-06-07T08:51:35.765031Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T08:51:35.879457Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T08:51:39.292442Z  INFO tcp_file_server::mcp::registry: MCP tool call: get_user_profile args={"username":"dera.ah.14"}
+2026-06-07T08:51:44.068507Z  INFO tcp_file_server::mcp::registry: MCP tool call: update_user_profile args={"birth_date":"01/01/2000","first_name":"Dera","last_name":"De Salles","location":"TanaMG","username":"dera.ah.14"}
+2026-06-07T08:51:45.716198Z  INFO tcp_file_server::mcp::registry: MCP tool call: update_user_profile args={"birth_date":"01/01/2000","first_name":"Dera","last_name":"De Salles","location":"TanaMG","username":"dera.ah.14"}
+2026-06-07T08:51:47.189653Z  WARN sqlx::query: slow statement: execution time exceeded alert threshold summary="UPDATE users SET username …" db.statement="\n\nUPDATE\n  users\nSET\n  username = ?,\n  password_hash = ?,\n  email = ?,\n  first_name = ?,\n  last_name = ?,\n  birth_date = ?,\n  location = ?,\n  storage_quota_bytes = ?,\n  is_active = ?\nWHERE\n  id = ?\n" rows_affected=1 rows_returned=0 elapsed=3.120565129s elapsed_secs=3.120565129 slow_threshold=1s
+2026-06-07T08:51:47.247244Z  WARN sqlx::query: slow statement: execution time exceeded alert threshold summary="SELECT id, username, password_hash, …" db.statement="\n\nSELECT\n  id,\n  username,\n  password_hash,\n  email,\n  first_name,\n  last_name,\n  birth_date,\n  location,\n  created_at,\n  storage_quota_bytes,\n  is_active\nFROM\n  users\nWHERE\n  username = ?\n" rows_affected=0 rows_returned=1 elapsed=1.530650711s elapsed_secs=1.530650711 slow_threshold=1s
+2026-06-07T08:51:52.024218Z  WARN sqlx::query: slow statement: execution time exceeded alert threshold summary="SELECT f.filename, f.storage_path, COUNT(*) …" db.statement="\n\nSELECT\n  f.filename,\n  f.storage_path,\n  COUNT(*) AS access_count,\n  COALESCE(SUM(al.bytes_transferred), 0) AS total_bytes\nFROM\n  access_log al\n  JOIN files f ON f.id = al.file_id\n  JOIN users u ON u.id = f.owner_id\nWHERE\n  u.username = ?\nGROUP BY\n  f.id\nORDER BY\n  access_count DESC\nLIMIT\n  ?\n" rows_affected=1 rows_returned=1 elapsed=1.785738313s elapsed_secs=1.785738313 slow_threshold=1s
+2026-06-07T08:51:52.261876Z  INFO tcp_file_server::mcp::registry: MCP tool call: get_user_profile args={"username":"dera.ah.14"}
+2026-06-07T08:51:54.046835Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T08:51:54.903343Z  INFO tcp_file_server::mcp::registry: MCP tool call: get_user_profile args={"username":"dera.ah.14"}
+2026-06-07T08:52:18.175325Z  INFO tcp_file_server::mcp::registry: MCP tool call: get_user_profile args={"username":"dera.ah.14"}
+2026-06-07T08:52:34.953006Z  WARN sqlx::query: slow statement: execution time exceeded alert threshold summary="SELECT DATE(al.accessed_at) AS date, …" db.statement="\n\nSELECT\n  DATE(al.accessed_at) AS date,\n  COALESCE(SUM(al.bytes_transferred), 0) AS bytes_total,\n  COUNT(*) AS access_count\nFROM\n  access_log al\n  JOIN files f ON f.id = al.file_id\n  JOIN users u ON u.id = f.owner_id\nWHERE\n  u.username = ?\n  AND al.accessed_at >= DATE('now', '-' || ? || ' days')\nGROUP BY\n  DATE(al.accessed_at)\nORDER BY\n  date ASC\n" rows_affected=0 rows_returned=1 elapsed=1.058236393s elapsed_secs=1.058236393 slow_threshold=1s
+2026-06-07T08:52:34.952992Z  WARN sqlx::query: slow statement: execution time exceeded alert threshold summary="SELECT DATE(al.accessed_at) AS date, …" db.statement="\n\nSELECT\n  DATE(al.accessed_at) AS date,\n  COALESCE(SUM(al.bytes_transferred), 0) AS bytes_total,\n  COUNT(*) AS access_count\nFROM\n  access_log al\n  JOIN files f ON f.id = al.file_id\n  JOIN users u ON u.id = f.owner_id\nWHERE\n  u.username = ?\n  AND al.accessed_at >= DATE('now', '-' || ? || ' days')\nGROUP BY\n  DATE(al.accessed_at)\nORDER BY\n  date ASC\n" rows_affected=0 rows_returned=1 elapsed=1.058240815s elapsed_secs=1.058240815 slow_threshold=1s
+2026-06-07T08:52:42.702099Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: PUT /arosaina-storage/.profile_pic.jpg for user dera.ah.14
+2026-06-07T08:52:50.089100Z  INFO tcp_file_server::mcp::registry: MCP tool call: update_user_profile args={"birth_date":"01/01/2000","first_name":"Dera","last_name":"De Salles","location":"TanaMG","username":"dera.ah.14"}
+2026-06-07T08:52:51.986774Z  WARN sqlx::query: slow statement: execution time exceeded alert threshold summary="UPDATE users SET username …" db.statement="\n\nUPDATE\n  users\nSET\n  username = ?,\n  password_hash = ?,\n  email = ?,\n  first_name = ?,\n  last_name = ?,\n  birth_date = ?,\n  location = ?,\n  storage_quota_bytes = ?,\n  is_active = ?\nWHERE\n  id = ?\n" rows_affected=1 rows_returned=0 elapsed=1.896666778s elapsed_secs=1.8966667780000002 slow_threshold=1s
+2026-06-07T08:52:52.017476Z  WARN sqlx::query: slow statement: execution time exceeded alert threshold summary="SELECT f.filename, f.storage_path, COUNT(*) …" db.statement="\n\nSELECT\n  f.filename,\n  f.storage_path,\n  COUNT(*) AS access_count,\n  COALESCE(SUM(al.bytes_transferred), 0) AS total_bytes\nFROM\n  access_log al\n  JOIN files f ON f.id = al.file_id\n  JOIN users u ON u.id = f.owner_id\nWHERE\n  u.username = ?\nGROUP BY\n  f.id\nORDER BY\n  access_count DESC\nLIMIT\n  ?\n" rows_affected=0 rows_returned=1 elapsed=1.730608494s elapsed_secs=1.7306084940000002 slow_threshold=1s
+2026-06-07T08:52:52.021573Z  WARN sqlx::query: slow statement: execution time exceeded alert threshold summary="SELECT id, owner_id, filename, …" db.statement="\n\nSELECT\n  id,\n  owner_id,\n  filename,\n  storage_path,\n  size_bytes,\n  mime_type,\n  checksum,\n  created_at,\n  updated_at,\n  is_deleted\nFROM\n  files\nWHERE\n  owner_id = ?\n  AND storage_path = ?\n" rows_affected=0 rows_returned=0 elapsed=1.130144934s elapsed_secs=1.130144934 slow_threshold=1s
+2026-06-07T08:52:54.089364Z  WARN sqlx::query: slow statement: execution time exceeded alert threshold summary="INSERT INTO files (id, …" db.statement="\n\nINSERT INTO\n  files (\n    id,\n    owner_id,\n    filename,\n    storage_path,\n    size_bytes,\n    mime_type,\n    checksum,\n    created_at,\n    updated_at,\n    is_deleted\n  )\nVALUES\n  (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n" rows_affected=1 rows_returned=0 elapsed=2.066802444s elapsed_secs=2.066802444 slow_threshold=1s
+2026-06-07T08:52:54.096514Z  INFO tcp_file_server::mcp::registry: MCP tool call: update_user_profile args={"profile_pic_path":".profile_pic.jpg","username":"dera.ah.14"}
+2026-06-07T08:52:54.596771Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T08:52:54.616641Z  INFO tcp_file_server::mcp::registry: MCP tool call: get_user_profile args={"username":"dera.ah.14"}
+2026-06-07T08:52:54.616826Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/dera.ah.14/.profile_pic.jpg for user dera.ah.14
+2026-06-07T08:52:55.466743Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T08:52:57.395025Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T08:52:58.876427Z  INFO tcp_file_server::mcp::registry: MCP tool call: get_user_profile args={"username":"dera.ah.14"}
+2026-06-07T08:52:58.909027Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/dera.ah.14/.profile_pic.jpg for user dera.ah.14
+2026-06-07T08:52:59.257791Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/dera.ah.14/.profile_pic.jpg for user dera.ah.14
+2026-06-07T08:53:03.288414Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/dera.ah.14/.profile_pic.jpg for user dera.ah.14
+2026-06-07T08:53:05.406501Z  INFO tcp_file_server::mcp::registry: MCP tool call: get_user_profile args={"username":"dera.ah.14"}
+2026-06-07T08:53:05.447476Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/dera.ah.14/.profile_pic.jpg for user dera.ah.14
+2026-06-07T08:53:05.785336Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/dera.ah.14/.profile_pic.jpg for user dera.ah.14
+2026-06-07T08:53:06.654610Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/dera.ah.14/.profile_pic.jpg for user dera.ah.14
+2026-06-07T08:53:13.564055Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T08:53:20.883363Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T08:53:21.966103Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T08:53:22.901072Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/.profile_pic.jpg for user dera.ah.14
+2026-06-07T08:53:25.895034Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T08:53:25.910714Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T08:53:25.911750Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/dera.ah.14/.profile_pic.jpg for user dera.ah.14
+2026-06-07T08:53:28.884583Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T08:53:29.544841Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T08:53:30.061046Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/dera.ah.14/.profile_pic.jpg for user dera.ah.14
+2026-06-07T08:53:40.538847Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T08:53:41.075594Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T08:53:41.088162Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T08:55:47.325871Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T08:55:47.341487Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T08:55:48.871099Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T08:55:53.132105Z  INFO tcp_file_server::mcp::registry: MCP tool call: get_user_profile args={"username":"dera.ah.14"}

@@ -12,6 +12,7 @@ pub struct DbUser {
     pub last_name: Option<String>,
     pub birth_date: Option<String>,
     pub location: Option<String>,
+    pub profile_pic_path: Option<String>,
     pub created_at: DateTime<Utc>,
     pub storage_quota_bytes: i64,
     pub is_active: bool,

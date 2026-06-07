@@ -365,7 +365,8 @@ impl McpRegistry {
                         "first_name": { "type": "string" },
                         "last_name": { "type": "string" },
                         "birth_date": { "type": "string" },
-                        "location": { "type": "string" }
+                        "location": { "type": "string" },
+                        "profile_pic_path": { "type": "string" }
                     },
                     "required": ["username"]
                 }),
@@ -962,6 +963,7 @@ impl McpRegistry {
                 "last_name": user.last_name,
                 "birth_date": user.birth_date,
                 "location": user.location,
+                "profile_pic_path": user.profile_pic_path,
             })
             .to_string(),
         )
@@ -990,6 +992,9 @@ impl McpRegistry {
         }
         if let Some(location) = args.get("location").and_then(|v| v.as_str()) {
             user.location = Some(location.to_string());
+        }
+        if let Some(profile_pic_path) = args.get("profile_pic_path").and_then(|v| v.as_str()) {
+            user.profile_pic_path = Some(profile_pic_path.to_string());
         }
 
         match self.user_repo.update(&user).await {

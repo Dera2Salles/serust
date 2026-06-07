@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
     last_name TEXT,
     birth_date TEXT,
     location TEXT,
+    profile_pic_path TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     storage_quota_bytes INTEGER NOT NULL DEFAULT 0,
     is_active BOOLEAN NOT NULL DEFAULT 0
