@@ -226,3 +226,178 @@
 2026-06-04T05:51:25.613358Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
 2026-06-04T05:51:25.620094Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
 2026-06-04T05:51:26.328611Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-06T08:42:45.892390Z  INFO tcp_file_server: Démarrage du framework TCP...
+2026-06-06T08:42:45.892427Z  INFO tcp_file_server::injection: Mode Stockage Local activé (Interface S3-compatible)
+2026-06-06T08:42:45.892642Z  INFO tcp_file_server::injection: Initialisation de la base de données SQLite...
+2026-06-06T08:42:47.370541Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : alice
+2026-06-06T08:42:47.470299Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : bob
+2026-06-06T08:42:47.522406Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : carol
+2026-06-06T08:42:47.549280Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : testuser
+2026-06-06T08:42:47.565517Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : ayanokoji
+2026-06-06T08:42:47.679905Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : developer
+2026-06-06T08:42:48.070536Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : dera
+2026-06-06T08:42:48.071065Z  INFO tcp_file_server: MCP server spawned on 0.0.0.0:8081
+2026-06-06T08:42:48.071164Z  INFO tcp_file_server::mcp::server: MCP server listening on http://0.0.0.0:8081
+2026-06-06T08:42:48.071208Z  INFO tcp_file_server: S3 API server listening on 0.0.0.0:8084
+2026-06-06T08:42:48.071242Z  INFO tcp_file_server: WebDAV HTTP server listening on 0.0.0.0:8083
+2026-06-06T08:42:55.430822Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-06T08:42:55.647145Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-06T08:42:55.694238Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-06T08:42:57.037205Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-06T14:21:51.542913Z  INFO tcp_file_server: Démarrage du framework TCP...
+2026-06-06T14:21:51.542939Z  INFO tcp_file_server::injection: Mode Stockage Local activé (Interface S3-compatible)
+2026-06-06T14:21:51.543188Z  INFO tcp_file_server::injection: Initialisation de la base de données SQLite...
+2026-06-06T14:21:52.277300Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : alice
+2026-06-06T14:21:52.356503Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : bob
+2026-06-06T14:21:52.372769Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : carol
+2026-06-06T14:21:52.383089Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : testuser
+2026-06-06T14:21:52.396595Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : ayanokoji
+2026-06-06T14:21:52.408120Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : developer
+2026-06-06T14:21:55.421994Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : dera
+2026-06-06T14:21:55.422674Z  INFO tcp_file_server: MCP server spawned on 0.0.0.0:8081
+2026-06-06T14:21:55.422745Z  INFO tcp_file_server::mcp::server: MCP server listening on http://0.0.0.0:8081
+2026-06-06T14:21:55.422832Z  INFO tcp_file_server: WebDAV HTTP server listening on 0.0.0.0:8083
+2026-06-06T14:21:55.422895Z  INFO tcp_file_server: S3 API server listening on 0.0.0.0:8084
+2026-06-06T17:11:16.212585Z  INFO tcp_file_server: Démarrage du framework TCP...
+2026-06-06T17:11:16.212623Z  INFO tcp_file_server::injection: Mode Stockage Local activé (Interface S3-compatible)
+2026-06-06T17:11:16.212897Z  INFO tcp_file_server::injection: Initialisation de la base de données SQLite...
+2026-06-06T17:11:22.677805Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : alice
+2026-06-06T17:11:23.220825Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : bob
+2026-06-06T17:11:23.301759Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : carol
+2026-06-06T17:11:23.323185Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : testuser
+2026-06-06T17:11:23.404443Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : ayanokoji
+2026-06-06T17:11:23.407130Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : developer
+2026-06-06T17:11:25.175811Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : dera
+2026-06-06T17:11:25.176680Z  INFO tcp_file_server: MCP server spawned on 0.0.0.0:8081
+2026-06-06T17:11:25.176839Z  INFO tcp_file_server: S3 API server listening on 0.0.0.0:8084
+2026-06-06T17:11:25.176893Z  INFO tcp_file_server: WebDAV HTTP server listening on 0.0.0.0:8083
+2026-06-06T17:11:25.176912Z  INFO tcp_file_server::mcp::server: MCP server listening on http://0.0.0.0:8081
+2026-06-06T17:11:36.156265Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-06T17:11:36.174560Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-06T17:11:46.383712Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-06T17:11:46.533310Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-06T17:11:46.651174Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-06T17:11:51.444868Z  INFO tcp_file_server::mcp::registry: MCP tool call: get_user_profile args={"username":"dera.ah.14"}
+2026-06-06T17:12:16.567396Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-06T17:12:17.492002Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-06T17:12:35.340046Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-06T17:12:35.488670Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-06T17:12:35.528232Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-06T17:12:37.643828Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-06T17:12:38.776795Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-06T17:12:40.073328Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-06T17:12:40.089848Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-06T17:12:41.055930Z  INFO tcp_file_server::mcp::registry: MCP tool call: get_user_profile args={"username":"dera.ah.14"}
+2026-06-06T17:31:43.539217Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-06T17:31:43.591510Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-06T17:46:50.666350Z  WARN sqlx::query: slow statement: execution time exceeded alert threshold summary="SELECT al.action, f.filename, al.accessed_at, …" db.statement="\n\nSELECT\n  al.action,\n  f.filename,\n  al.accessed_at,\n  al.ip_address,\n  al.bytes_transferred\nFROM\n  access_log al\n  JOIN files f ON f.id = al.file_id\n  JOIN users u ON u.id = f.owner_id\nWHERE\n  u.username = ?\nORDER BY\n  al.accessed_at DESC\nLIMIT\n  ?\n" rows_affected=0 rows_returned=1 elapsed=1.544806873s elapsed_secs=1.544806873 slow_threshold=1s
+2026-06-06T17:46:58.656367Z  WARN sqlx::query: slow statement: execution time exceeded alert threshold summary="SELECT DATE(al.accessed_at) AS date, …" db.statement="\n\nSELECT\n  DATE(al.accessed_at) AS date,\n  COALESCE(SUM(al.bytes_transferred), 0) AS bytes_total,\n  COUNT(*) AS access_count\nFROM\n  access_log al\n  JOIN files f ON f.id = al.file_id\n  JOIN users u ON u.id = f.owner_id\nWHERE\n  u.username = ?\n  AND al.accessed_at >= DATE('now', '-' || ? || ' days')\nGROUP BY\n  DATE(al.accessed_at)\nORDER BY\n  date ASC\n" rows_affected=0 rows_returned=1 elapsed=2.048624418s elapsed_secs=2.048624418 slow_threshold=1s
+2026-06-07T05:18:33.700182Z  INFO tcp_file_server: Démarrage du framework TCP...
+2026-06-07T05:18:33.700214Z  INFO tcp_file_server::injection: Mode Stockage Local activé (Interface S3-compatible)
+2026-06-07T05:18:33.700417Z  INFO tcp_file_server::injection: Initialisation de la base de données SQLite...
+2026-06-07T05:18:34.314017Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : alice
+2026-06-07T05:18:35.033578Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : bob
+2026-06-07T05:18:35.058387Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : carol
+2026-06-07T05:18:35.078132Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : testuser
+2026-06-07T05:18:35.099744Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : ayanokoji
+2026-06-07T05:18:35.101291Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : developer
+2026-06-07T05:18:35.198240Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : dera
+2026-06-07T05:18:35.198880Z  INFO tcp_file_server: MCP server spawned on 0.0.0.0:8081
+2026-06-07T05:18:35.199062Z  INFO tcp_file_server: S3 API server listening on 0.0.0.0:8084
+2026-06-07T05:18:35.199171Z  INFO tcp_file_server: WebDAV HTTP server listening on 0.0.0.0:8083
+2026-06-07T05:18:35.199220Z  INFO tcp_file_server::mcp::server: MCP server listening on http://0.0.0.0:8081
+2026-06-07T05:18:37.719278Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T05:18:37.732014Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T05:18:45.768152Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T05:18:46.951721Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T05:18:48.341401Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T05:18:48.949019Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/20260601_090543.jpg for user dera.ah.14
+2026-06-07T05:18:56.708941Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/Test/ for user dera.ah.14
+2026-06-07T05:18:58.109757Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/Test/Test-encore/ for user dera.ah.14
+2026-06-07T05:19:00.307378Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/Test/ for user dera.ah.14
+2026-06-07T05:19:01.182301Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T05:19:02.513456Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T05:19:02.520174Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T05:19:03.770166Z  INFO tcp_file_server::mcp::registry: MCP tool call: get_user_profile args={"username":"dera.ah.14"}
+2026-06-07T06:25:32.443575Z  INFO tcp_file_server: Démarrage du framework TCP...
+2026-06-07T06:25:32.443612Z  INFO tcp_file_server::injection: Mode Stockage Local activé (Interface S3-compatible)
+2026-06-07T06:25:32.443839Z  INFO tcp_file_server::injection: Initialisation de la base de données SQLite...
+2026-06-07T06:25:33.585245Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : alice
+2026-06-07T06:25:33.652499Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : bob
+2026-06-07T06:25:33.790263Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : carol
+2026-06-07T06:25:34.134970Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : testuser
+2026-06-07T06:25:34.156657Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : ayanokoji
+2026-06-07T06:25:34.198642Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : developer
+2026-06-07T06:25:34.255460Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : dera
+2026-06-07T06:25:34.309599Z  INFO tcp_file_server: MCP server spawned on 0.0.0.0:8081
+2026-06-07T06:25:34.309623Z  INFO tcp_file_server::mcp::server: MCP server listening on http://0.0.0.0:8081
+2026-06-07T06:25:34.309706Z  INFO tcp_file_server: WebDAV HTTP server listening on 0.0.0.0:8083
+2026-06-07T06:25:34.309948Z  INFO tcp_file_server: S3 API server listening on 0.0.0.0:8084
+2026-06-07T06:25:36.862860Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T06:25:36.926168Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T06:25:36.941948Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T06:25:37.848373Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T06:25:39.347094Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T06:25:39.743197Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T06:25:39.850443Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T06:25:50.549814Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T06:25:51.134693Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T06:25:51.135180Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T06:25:53.653599Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T06:26:20.697784Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T06:26:20.712453Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T06:26:25.874633Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T06:26:28.188399Z  INFO tcp_file_server::mcp::registry: MCP tool call: get_user_profile args={"username":"dera.ah.14"}
+2026-06-07T06:26:36.455901Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T06:26:36.456211Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T06:26:38.457273Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T06:26:40.056141Z  INFO tcp_file_server::mcp::registry: MCP tool call: get_user_profile args={"username":"dera.ah.14"}
+2026-06-07T06:29:21.344697Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T06:29:21.855904Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T06:29:27.948341Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T06:29:34.940008Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T06:29:34.948260Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:09:41.167024Z  INFO tcp_file_server: Démarrage du framework TCP...
+2026-06-07T07:09:41.167041Z  INFO tcp_file_server::injection: Mode Stockage Local activé (Interface S3-compatible)
+2026-06-07T07:09:41.167370Z  INFO tcp_file_server::injection: Initialisation de la base de données SQLite...
+2026-06-07T07:09:43.379607Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : alice
+2026-06-07T07:09:43.430952Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : bob
+2026-06-07T07:09:44.291019Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : carol
+2026-06-07T07:09:44.666000Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : testuser
+2026-06-07T07:09:44.690740Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : ayanokoji
+2026-06-07T07:09:45.789379Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : developer
+2026-06-07T07:09:45.823993Z  INFO tcp_file_server::injection: Utilisateur prêt avec remote S3 : dera
+2026-06-07T07:09:45.824914Z  INFO tcp_file_server: MCP server spawned on 0.0.0.0:8081
+2026-06-07T07:09:45.825149Z  INFO tcp_file_server::mcp::server: MCP server listening on http://0.0.0.0:8081
+2026-06-07T07:09:45.825337Z  INFO tcp_file_server: WebDAV HTTP server listening on 0.0.0.0:8083
+2026-06-07T07:09:45.825585Z  INFO tcp_file_server: S3 API server listening on 0.0.0.0:8084
+2026-06-07T07:09:58.271700Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:09:58.562870Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:09:59.886110Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:09:59.889043Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:10:01.811476Z  WARN sqlx::query: slow statement: execution time exceeded alert threshold summary="SELECT id, owner_id, filename, …" db.statement="\n\nSELECT\n  id,\n  owner_id,\n  filename,\n  storage_path,\n  size_bytes,\n  mime_type,\n  checksum,\n  created_at,\n  updated_at,\n  is_deleted\nFROM\n  files\nWHERE\n  owner_id = ?\n  AND storage_path = ?\n" rows_affected=0 rows_returned=1 elapsed=1.920482778s elapsed_secs=1.920482778 slow_threshold=1s
+2026-06-07T07:10:03.876915Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:10:06.456110Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:10:06.461710Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:10:08.247249Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:10:09.673658Z  INFO tcp_file_server::mcp::registry: MCP tool call: get_user_profile args={"username":"dera.ah.14"}
+2026-06-07T07:10:17.795905Z  WARN sqlx::query: slow statement: execution time exceeded alert threshold summary="SELECT u.id, u.username, u.email, …" db.statement="\n\nSELECT\n  u.id,\n  u.username,\n  u.email,\n  u.is_active,\n  u.storage_quota_bytes,\n  u.created_at,\n  COALESCE(SUM(f.size_bytes), 0) as storage_used_bytes\nFROM\n  users u\n  LEFT JOIN files f ON f.owner_id = u.id\n  AND f.is_deleted = 0\nGROUP BY\n  u.id\n" rows_affected=0 rows_returned=11 elapsed=1.805050363s elapsed_secs=1.8050503629999999 slow_threshold=1s
+2026-06-07T07:10:36.383469Z  INFO tcp_file_server::mcp::registry: MCP tool call: update_user_profile args={"birth_date":"01/01/2000","first_name":"Dera","last_name":"De Salles","location":"TanaMG","username":"dera.ah.14"}
+2026-06-07T07:10:58.611604Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:10:58.618305Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:11:01.169700Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:11:02.846604Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/Test/ for user dera.ah.14
+2026-06-07T07:11:14.953881Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:11:14.955508Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:11:15.474911Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:11:16.440594Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/Test/ for user dera.ah.14
+2026-06-07T07:11:17.227943Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/Test/Test-encore/ for user dera.ah.14
+2026-06-07T07:11:18.723492Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/Test/ for user dera.ah.14
+2026-06-07T07:11:19.664550Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:11:19.666752Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:11:30.937423Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:12:05.982955Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:12:05.983374Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:16:04.004605Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:16:04.005504Z  INFO tcp_file_server::server::handlers::s3_handler: S3 API: GET /arosaina-storage/ for user dera.ah.14
+2026-06-07T07:16:20.363600Z  INFO tcp_file_server::mcp::registry: MCP tool call: get_user_profile args={"username":"dera.ah.14"}

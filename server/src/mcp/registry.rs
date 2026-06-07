@@ -345,6 +345,32 @@ impl McpRegistry {
                 }),
             },
             McpTool {
+                name: "get_user_profile".into(),
+                description: "Get the profile details of a user.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "username": { "type": "string", "description": "Username of the profile to fetch" }
+                    },
+                    "required": ["username"]
+                }),
+            },
+            McpTool {
+                name: "update_user_profile".into(),
+                description: "Update the profile details of a user.".into(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "username": { "type": "string", "description": "Username of the profile to update" },
+                        "first_name": { "type": "string" },
+                        "last_name": { "type": "string" },
+                        "birth_date": { "type": "string" },
+                        "location": { "type": "string" }
+                    },
+                    "required": ["username"]
+                }),
+            },
+            McpTool {
                 name: "compress_file".into(),
                 description: "Compress a file or folder into a ZIP or TAR.GZ archive.".into(),
                 input_schema: json!({
@@ -392,6 +418,8 @@ impl McpRegistry {
             "list_file_versions" => self.tool_list_file_versions(args).await,
             "restore_file_version" => self.tool_restore_file_version(args).await,
             "get_file_diff" => self.tool_get_file_diff(args).await,
+            "get_user_profile" => self.tool_get_user_profile(args).await,
+            "update_user_profile" => self.tool_update_user_profile(args).await,
             "compress_file" => self.tool_compress_file(args).await,
             "decompress_file" => self.tool_decompress_file(args).await,
             "search_users" => self.tool_search_users(args).await,
@@ -913,6 +941,61 @@ impl McpRegistry {
             }
         }
         results
+    }
+
+    async fn tool_get_user_profile(&self, args: &Value) -> McpToolResult {
+        let username = match Self::get_str(args, "username") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+
+        let user = self.make_user(username).await;
+        if user.id.is_nil() {
+            return McpToolResult::error("User not found");
+        }
+
+        McpToolResult::success(
+            json!({
+                "username": user.username,
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "birth_date": user.birth_date,
+                "location": user.location,
+            })
+            .to_string(),
+        )
+    }
+
+    async fn tool_update_user_profile(&self, args: &Value) -> McpToolResult {
+        let username = match Self::get_str(args, "username") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+
+        let mut user = match self.user_repo.find_by_username(username).await {
+            Ok(Some(u)) => u,
+            Ok(None) => return McpToolResult::error("User not found"),
+            Err(e) => return McpToolResult::error(format!("Database error: {}", e)),
+        };
+
+        if let Some(first_name) = args.get("first_name").and_then(|v| v.as_str()) {
+            user.first_name = Some(first_name.to_string());
+        }
+        if let Some(last_name) = args.get("last_name").and_then(|v| v.as_str()) {
+            user.last_name = Some(last_name.to_string());
+        }
+        if let Some(birth_date) = args.get("birth_date").and_then(|v| v.as_str()) {
+            user.birth_date = Some(birth_date.to_string());
+        }
+        if let Some(location) = args.get("location").and_then(|v| v.as_str()) {
+            user.location = Some(location.to_string());
+        }
+
+        match self.user_repo.update(&user).await {
+            Ok(_) => McpToolResult::success("Profile updated successfully"),
+            Err(e) => McpToolResult::error(format!("Failed to update profile: {}", e)),
+        }
     }
 
     async fn tool_search_users(&self, args: &Value) -> McpToolResult {

@@ -1,28 +1,15 @@
-import { invoke } from '@tauri-apps/api/core';
+import { useState, useEffect } from 'react';
+import { Header } from './OneUI';
 import {
-  Activity,
-  AlertCircle,
-  ArrowDownRight,
-  ArrowUpRight,
-  CheckCircle2,
-  Clock,
-  Database,
-  FolderOpen,
-  HardDrive,
-  Play,
-  ServerOff,
-  Users,
-  Wifi
-} from 'lucide-react';
-import { useEffect, useState } from 'react';
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis, YAxis
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  AreaChart, Area
 } from 'recharts';
+import {
+  Activity, HardDrive, Users, ArrowUpRight, ArrowDownRight,
+  ServerOff, CheckCircle2, Play, AlertCircle,
+  FolderOpen, Database, Wifi, Clock
+} from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
 
 interface SummaryData {
   total_accesses: number;
@@ -41,6 +28,7 @@ const formatBytes = (bytes: number) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
+/* Quick Access mock data — replaced with real data when available */
 const quickItems = [
   { label: 'Stockage actif',  sub: 'Données utilisateurs', icon: Database, color: '#2563eb', bg: '#eff4ff' },
   { label: 'Fichiers publics', sub: 'Liens partagés',      icon: FolderOpen, color: '#059669', bg: '#ecfdf5' },
@@ -107,7 +95,7 @@ export const AdminDashboard = () => {
           padding: '14px 18px',
           borderRadius: 12,
           background: isRunning ? 'var(--color-success-bg)' : 'var(--color-error-bg)',
-          border: `1px ${isRunning ? '#a7f3d0' : '#fca5a5'}`,
+          border: `1px solid ${isRunning ? '#a7f3d0' : '#fca5a5'}`,
         }}>
           <div className="flex items-center gap-3">
             <div style={{
