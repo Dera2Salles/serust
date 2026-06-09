@@ -1,8 +1,10 @@
 use crate::database::domain::DbAccessLog;
+use crate::database::entities::{prelude::*, access_log};
 use crate::database::interfaces::IAccessLogRepository;
 use crate::database::Database;
 use anyhow::Result;
 use async_trait::async_trait;
+use sea_orm::*;
 
 #[derive(Clone)]
 pub struct AccessLogRepository {
@@ -18,25 +20,20 @@ impl AccessLogRepository {
 #[async_trait]
 impl IAccessLogRepository for AccessLogRepository {
     async fn create(&self, log: &DbAccessLog) -> Result<()> {
-        let file_str = log.file_id.to_string();
-        let accessed_str = log.accessed_by.map(|u| u.to_string());
-        let link_str = log.share_link_id.map(|u| u.to_string());
-        let grant_str = log.grant_id.map(|u| u.to_string());
+        let active_model = access_log::ActiveModel {
+            file_id: Set(log.file_id.to_string()),
+            accessed_by: Set(log.accessed_by.map(|u| u.to_string())),
+            share_link_id: Set(log.share_link_id.map(|u| u.to_string())),
+            grant_id: Set(log.grant_id.map(|u| u.to_string())),
+            action: Set(Some(log.action.clone())),
+            accessed_at: Set(log.accessed_at.into()),
+            ip_address: Set(log.ip_address.clone()),
+            user_agent: Set(log.user_agent.clone()),
+            bytes_transferred: Set(log.bytes_transferred),
+            ..Default::default()
+        };
 
-        sqlx::query(
-            "INSERT INTO access_log (file_id, accessed_by, share_link_id, grant_id, action, accessed_at, ip_address, user_agent, bytes_transferred) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-        )
-        .bind(&file_str)
-        .bind(&accessed_str)
-        .bind(&link_str)
-        .bind(&grant_str)
-        .bind(&log.action)
-        .bind(log.accessed_at)
-        .bind(&log.ip_address)
-        .bind(&log.user_agent)
-        .bind(log.bytes_transferred)
-        .execute(&*self.db.pool)
-        .await?;
+        AccessLog::insert(active_model).exec(&self.db.connection).await?;
         Ok(())
     }
 }

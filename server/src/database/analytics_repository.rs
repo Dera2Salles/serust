@@ -1,9 +1,9 @@
 use crate::database::Database;
 use anyhow::Result;
+use sea_orm::*;
 use serde::{Deserialize, Serialize};
-use sqlx::Row;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromQueryResult)]
 pub struct FileAccessStat {
     pub filename: String,
     pub storage_path: String,
@@ -11,11 +11,20 @@ pub struct FileAccessStat {
     pub total_bytes: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromQueryResult)]
 pub struct BandwidthByDay {
     pub date: String,
     pub bytes_total: i64,
     pub access_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromQueryResult)]
+pub struct RecentActivityRaw {
+    pub action: String,
+    pub filename: String,
+    pub accessed_at: chrono::DateTime<chrono::FixedOffset>,
+    pub ip_address: Option<String>,
+    pub bytes_transferred: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,6 +34,14 @@ pub struct RecentActivity {
     pub accessed_at: String,
     pub ip_address: Option<String>,
     pub bytes_transferred: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromQueryResult)]
+struct Totals {
+    total_accesses: i64,
+    total_bytes: i64,
+    unique_files: i64,
+    unique_ips: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,7 +70,8 @@ impl AnalyticsRepository {
         let bandwidth_by_day = self.bandwidth_by_day(username, 30).await?;
         let recent_activity = self.recent_activity(username, 20).await?;
 
-        let totals = sqlx::query(
+        let totals: Option<Totals> = Totals::find_by_statement(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
             r#"
             SELECT
                 COUNT(*) AS total_accesses,
@@ -63,18 +81,25 @@ impl AnalyticsRepository {
             FROM access_log al
             JOIN files f ON f.id = al.file_id
             JOIN users u ON u.id = f.owner_id
-            WHERE u.username = ?
+            WHERE u.username = $1
             "#,
-        )
-        .bind(username)
-        .fetch_one(&*self.db.pool)
+            vec![username.into()],
+        ))
+        .one(&self.db.connection)
         .await?;
 
+        let totals = totals.unwrap_or(Totals {
+            total_accesses: 0,
+            total_bytes: 0,
+            unique_files: 0,
+            unique_ips: 0,
+        });
+
         Ok(AnalyticsSummary {
-            total_accesses: totals.try_get("total_accesses").unwrap_or(0),
-            total_bytes_transferred: totals.try_get("total_bytes").unwrap_or(0),
-            unique_files_accessed: totals.try_get("unique_files").unwrap_or(0),
-            unique_ips: totals.try_get("unique_ips").unwrap_or(0),
+            total_accesses: totals.total_accesses,
+            total_bytes_transferred: totals.total_bytes,
+            unique_files_accessed: totals.unique_files,
+            unique_ips: totals.unique_ips,
             top_files,
             bandwidth_by_day,
             recent_activity,
@@ -82,7 +107,8 @@ impl AnalyticsRepository {
     }
 
     pub async fn top_files(&self, username: &str, limit: i64) -> Result<Vec<FileAccessStat>> {
-        let rows = sqlx::query(
+        let stats = FileAccessStat::find_by_statement(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
             r#"
             SELECT
                 f.filename,
@@ -92,61 +118,46 @@ impl AnalyticsRepository {
             FROM access_log al
             JOIN files f ON f.id = al.file_id
             JOIN users u ON u.id = f.owner_id
-            WHERE u.username = ?
-            GROUP BY f.id
+            WHERE u.username = $1
+            GROUP BY f.id, f.filename, f.storage_path
             ORDER BY access_count DESC
-            LIMIT ?
+            LIMIT $2
             "#,
-        )
-        .bind(username)
-        .bind(limit)
-        .fetch_all(&*self.db.pool)
+            vec![username.into(), limit.into()],
+        ))
+        .all(&self.db.connection)
         .await?;
 
-        Ok(rows
-            .iter()
-            .map(|r| FileAccessStat {
-                filename: r.try_get("filename").unwrap_or_default(),
-                storage_path: r.try_get("storage_path").unwrap_or_default(),
-                access_count: r.try_get("access_count").unwrap_or(0),
-                total_bytes: r.try_get("total_bytes").unwrap_or(0),
-            })
-            .collect())
+        Ok(stats)
     }
 
     pub async fn bandwidth_by_day(&self, username: &str, days: i64) -> Result<Vec<BandwidthByDay>> {
-        let rows = sqlx::query(
+        let stats = BandwidthByDay::find_by_statement(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
             r#"
             SELECT
-                DATE(al.accessed_at) AS date,
+                DATE(al.accessed_at)::text AS date,
                 COALESCE(SUM(al.bytes_transferred), 0) AS bytes_total,
                 COUNT(*) AS access_count
             FROM access_log al
             JOIN files f ON f.id = al.file_id
             JOIN users u ON u.id = f.owner_id
-            WHERE u.username = ?
-              AND al.accessed_at >= DATE('now', '-' || ? || ' days')
+            WHERE u.username = $1
+              AND al.accessed_at >= NOW() - MAKE_INTERVAL(days => $2)
             GROUP BY DATE(al.accessed_at)
             ORDER BY date ASC
             "#,
-        )
-        .bind(username)
-        .bind(days)
-        .fetch_all(&*self.db.pool)
+            vec![username.into(), days.into()],
+        ))
+        .all(&self.db.connection)
         .await?;
 
-        Ok(rows
-            .iter()
-            .map(|r| BandwidthByDay {
-                date: r.try_get("date").unwrap_or_default(),
-                bytes_total: r.try_get("bytes_total").unwrap_or(0),
-                access_count: r.try_get("access_count").unwrap_or(0),
-            })
-            .collect())
+        Ok(stats)
     }
 
     pub async fn recent_activity(&self, username: &str, limit: i64) -> Result<Vec<RecentActivity>> {
-        let rows = sqlx::query(
+        let rows = RecentActivityRaw::find_by_statement(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
             r#"
             SELECT
                 al.action,
@@ -157,29 +168,23 @@ impl AnalyticsRepository {
             FROM access_log al
             JOIN files f ON f.id = al.file_id
             JOIN users u ON u.id = f.owner_id
-            WHERE u.username = ?
+            WHERE u.username = $1
             ORDER BY al.accessed_at DESC
-            LIMIT ?
+            LIMIT $2
             "#,
-        )
-        .bind(username)
-        .bind(limit)
-        .fetch_all(&*self.db.pool)
+            vec![username.into(), limit.into()],
+        ))
+        .all(&self.db.connection)
         .await?;
 
         Ok(rows
-            .iter()
-            .map(|r| {
-                let accessed_at: chrono::DateTime<chrono::Utc> = r
-                    .try_get("accessed_at")
-                    .unwrap_or_else(|_| chrono::Utc::now());
-                RecentActivity {
-                    action: r.try_get("action").unwrap_or_default(),
-                    filename: r.try_get("filename").unwrap_or_default(),
-                    accessed_at: accessed_at.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
-                    ip_address: r.try_get("ip_address").ok().flatten(),
-                    bytes_transferred: r.try_get("bytes_transferred").ok().flatten(),
-                }
+            .into_iter()
+            .map(|r| RecentActivity {
+                action: r.action,
+                filename: r.filename,
+                accessed_at: r.accessed_at.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+                ip_address: r.ip_address,
+                bytes_transferred: r.bytes_transferred,
             })
             .collect())
     }

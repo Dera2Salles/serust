@@ -1,8 +1,10 @@
 use crate::database::domain::{DbShareGrant, DbShareLink};
+use crate::database::entities::{prelude::*, share_links, share_grants};
 use crate::database::interfaces::IShareDatabaseRepository;
 use crate::database::Database;
 use anyhow::Result;
 use async_trait::async_trait;
+use sea_orm::*;
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -14,170 +16,118 @@ impl ShareRepository {
     pub fn new(db: Database) -> Self {
         Self { db }
     }
+
+    fn model_to_link(model: share_links::Model) -> DbShareLink {
+        DbShareLink {
+            id: Uuid::parse_str(&model.id).unwrap_or_else(|_| Uuid::nil()),
+            file_id: Uuid::parse_str(&model.file_id).unwrap_or_else(|_| Uuid::nil()),
+            created_by: Uuid::parse_str(&model.created_by).unwrap_or_else(|_| Uuid::nil()),
+            token: model.token,
+            label: model.label,
+            can_read: model.can_read.unwrap_or(true),
+            can_write: model.can_write.unwrap_or(false),
+            can_reshare: model.can_reshare.unwrap_or(false),
+            max_reads: model.max_reads,
+            expires_at: model.expires_at.map(|dt| dt.into()),
+            password_hash: model.password_hash,
+            is_active: model.is_active.unwrap_or(true),
+        }
+    }
+
+    fn model_to_grant(model: share_grants::Model) -> DbShareGrant {
+        DbShareGrant {
+            id: Uuid::parse_str(&model.id).unwrap_or_else(|_| Uuid::nil()),
+            file_id: Uuid::parse_str(&model.file_id).unwrap_or_else(|_| Uuid::nil()),
+            granted_by: Uuid::parse_str(&model.granted_by).unwrap_or_else(|_| Uuid::nil()),
+            granted_to: Uuid::parse_str(&model.granted_to).unwrap_or_else(|_| Uuid::nil()),
+            can_read: model.can_read,
+            can_write: model.can_write,
+            can_reshare: model.can_reshare,
+            max_reads: model.max_reads,
+            expires_at: model.expires_at.map(|dt| dt.into()),
+            granted_at: model.granted_at.into(),
+        }
+    }
 }
 
 #[async_trait]
 impl IShareDatabaseRepository for ShareRepository {
     async fn create_link(&self, link: &DbShareLink) -> Result<()> {
-        let id_str = link.id.to_string();
-        let file_str = link.file_id.to_string();
-        let created_str = link.created_by.to_string();
+        let active_model = share_links::ActiveModel {
+            id: Set(link.id.to_string()),
+            file_id: Set(link.file_id.to_string()),
+            created_by: Set(link.created_by.to_string()),
+            token: Set(link.token.clone()),
+            label: Set(link.label.clone()),
+            can_read: Set(Some(link.can_read)),
+            can_write: Set(Some(link.can_write)),
+            can_reshare: Set(Some(link.can_reshare)),
+            max_reads: Set(link.max_reads),
+            expires_at: Set(link.expires_at.map(|dt| dt.into())),
+            password_hash: Set(link.password_hash.clone()),
+            is_active: Set(Some(link.is_active)),
+        };
 
-        sqlx::query(
-            "INSERT INTO share_links (id, file_id, created_by, token, label, can_read, can_write, can_reshare, max_reads, expires_at, password_hash, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-        )
-        .bind(&id_str)
-        .bind(&file_str)
-        .bind(&created_str)
-        .bind(&link.token)
-        .bind(&link.label)
-        .bind(link.can_read)
-        .bind(link.can_write)
-        .bind(link.can_reshare)
-        .bind(link.max_reads)
-        .bind(link.expires_at)
-        .bind(&link.password_hash)
-        .bind(link.is_active)
-        .execute(&*self.db.pool)
-        .await?;
+        ShareLinks::insert(active_model).exec(&self.db.connection).await?;
         Ok(())
     }
 
     async fn create_grant(&self, grant: &DbShareGrant) -> Result<()> {
-        let id_str = grant.id.to_string();
-        let file_str = grant.file_id.to_string();
-        let granted_by_str = grant.granted_by.to_string();
-        let granted_to_str = grant.granted_to.to_string();
+        let active_model = share_grants::ActiveModel {
+            id: Set(grant.id.to_string()),
+            file_id: Set(grant.file_id.to_string()),
+            granted_by: Set(grant.granted_by.to_string()),
+            granted_to: Set(grant.granted_to.to_string()),
+            can_read: Set(grant.can_read),
+            can_write: Set(grant.can_write),
+            can_reshare: Set(grant.can_reshare),
+            max_reads: Set(grant.max_reads),
+            expires_at: Set(grant.expires_at.map(|dt| dt.into())),
+            granted_at: Set(grant.granted_at.into()),
+        };
 
-        sqlx::query(
-            "INSERT INTO share_grants (id, file_id, granted_by, granted_to, can_read, can_write, can_reshare, max_reads, expires_at, granted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-        )
-        .bind(&id_str)
-        .bind(&file_str)
-        .bind(&granted_by_str)
-        .bind(&granted_to_str)
-        .bind(grant.can_read)
-        .bind(grant.can_write)
-        .bind(grant.can_reshare)
-        .bind(grant.max_reads)
-        .bind(grant.expires_at)
-        .bind(grant.granted_at)
-        .execute(&*self.db.pool)
-        .await?;
+        ShareGrants::insert(active_model).exec(&self.db.connection).await?;
         Ok(())
     }
 
     async fn find_link_by_token(&self, token: &str) -> Result<Option<DbShareLink>> {
-        let row = sqlx::query(
-            "SELECT id, file_id, created_by, token, label, can_read, can_write, can_reshare, max_reads, expires_at, password_hash, is_active FROM share_links WHERE token = ? AND is_active = 1"
-        )
-        .bind(token)
-        .fetch_optional(&*self.db.pool)
-        .await?;
+        let model = ShareLinks::find()
+            .filter(share_links::Column::Token.eq(token))
+            .filter(share_links::Column::IsActive.eq(Some(true)))
+            .one(&self.db.connection)
+            .await?;
 
-        if let Some(r) = row {
-            use sqlx::Row;
-            let id_str: String = r.try_get("id")?;
-            let file_str: String = r.try_get("file_id")?;
-            let created_str: String = r.try_get("created_by")?;
-            Ok(Some(DbShareLink {
-                id: uuid::Uuid::parse_str(&id_str)?,
-                file_id: uuid::Uuid::parse_str(&file_str)?,
-                created_by: uuid::Uuid::parse_str(&created_str)?,
-                token: r.try_get("token")?,
-                label: r.try_get("label")?,
-                can_read: r.try_get("can_read")?,
-                can_write: r.try_get("can_write")?,
-                can_reshare: r.try_get("can_reshare")?,
-                max_reads: r.try_get("max_reads")?,
-                expires_at: r.try_get("expires_at")?,
-                password_hash: r.try_get("password_hash")?,
-                is_active: r.try_get("is_active")?,
-            }))
-        } else {
-            Ok(None)
-        }
+        Ok(model.map(Self::model_to_link))
     }
 
     async fn list_links_by_owner(&self, owner_id: Uuid) -> Result<Vec<DbShareLink>> {
-        let owner_str = owner_id.to_string();
-        let rows = sqlx::query(
-            "SELECT id, file_id, created_by, token, label, can_read, can_write, can_reshare, max_reads, expires_at, password_hash, is_active FROM share_links WHERE created_by = ?"
-        )
-        .bind(&owner_str)
-        .fetch_all(&*self.db.pool)
-        .await?;
+        let models = ShareLinks::find()
+            .filter(share_links::Column::CreatedBy.eq(owner_id.to_string()))
+            .all(&self.db.connection)
+            .await?;
 
-        let mut results = Vec::new();
-        for r in rows {
-            use sqlx::Row;
-            let id_str: String = r.try_get("id")?;
-            let file_str: String = r.try_get("file_id")?;
-            let created_str: String = r.try_get("created_by")?;
-            results.push(DbShareLink {
-                id: uuid::Uuid::parse_str(&id_str)?,
-                file_id: uuid::Uuid::parse_str(&file_str)?,
-                created_by: uuid::Uuid::parse_str(&created_str)?,
-                token: r.try_get("token")?,
-                label: r.try_get("label")?,
-                can_read: r.try_get("can_read")?,
-                can_write: r.try_get("can_write")?,
-                can_reshare: r.try_get("can_reshare")?,
-                max_reads: r.try_get("max_reads")?,
-                expires_at: r.try_get("expires_at")?,
-                password_hash: r.try_get("password_hash")?,
-                is_active: r.try_get("is_active")?,
-            });
-        }
-        Ok(results)
+        Ok(models.into_iter().map(Self::model_to_link).collect())
     }
 
     async fn list_grants_by_owner(&self, owner_id: Uuid) -> Result<Vec<DbShareGrant>> {
-        let owner_str = owner_id.to_string();
-        let rows = sqlx::query(
-            "SELECT id, file_id, granted_by, granted_to, can_read, can_write, can_reshare, max_reads, expires_at, granted_at FROM share_grants WHERE granted_by = ?"
-        )
-        .bind(&owner_str)
-        .fetch_all(&*self.db.pool)
-        .await?;
+        let models = ShareGrants::find()
+            .filter(share_grants::Column::GrantedBy.eq(owner_id.to_string()))
+            .all(&self.db.connection)
+            .await?;
 
-        let mut results = Vec::new();
-        for r in rows {
-            use sqlx::Row;
-            let id_str: String = r.try_get("id")?;
-            let file_str: String = r.try_get("file_id")?;
-            let granted_by_str: String = r.try_get("granted_by")?;
-            let granted_to_str: String = r.try_get("granted_to")?;
-            results.push(DbShareGrant {
-                id: uuid::Uuid::parse_str(&id_str)?,
-                file_id: uuid::Uuid::parse_str(&file_str)?,
-                granted_by: uuid::Uuid::parse_str(&granted_by_str)?,
-                granted_to: uuid::Uuid::parse_str(&granted_to_str)?,
-                can_read: r.try_get("can_read")?,
-                can_write: r.try_get("can_write")?,
-                can_reshare: r.try_get("can_reshare")?,
-                max_reads: r.try_get("max_reads")?,
-                expires_at: r.try_get("expires_at")?,
-                granted_at: r.try_get("granted_at")?,
-            });
-        }
-        Ok(results)
+        Ok(models.into_iter().map(Self::model_to_grant).collect())
     }
 
     async fn delete_link(&self, id: Uuid) -> Result<()> {
-        let id_str = id.to_string();
-        sqlx::query("DELETE FROM share_links WHERE id = ?")
-            .bind(&id_str)
-            .execute(&*self.db.pool)
+        ShareLinks::delete_by_id(id.to_string())
+            .exec(&self.db.connection)
             .await?;
         Ok(())
     }
 
     async fn delete_grant(&self, id: Uuid) -> Result<()> {
-        let id_str = id.to_string();
-        sqlx::query("DELETE FROM share_grants WHERE id = ?")
-            .bind(&id_str)
-            .execute(&*self.db.pool)
+        ShareGrants::delete_by_id(id.to_string())
+            .exec(&self.db.connection)
             .await?;
         Ok(())
     }

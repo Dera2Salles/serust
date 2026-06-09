@@ -36,7 +36,7 @@ async fn handle_request(
     shares: Arc<ShareService>,
 ) -> Result<S3Response, BoxError> {
     // 1. Authentication
-    let user = match authenticate(&req, auth).await {
+    let user = match authenticate(&req, auth.clone()).await {
         Ok(u) => u,
         Err(_) => {
             let mut res = Response::new(Full::new(Bytes::from("Unauthorized")));
@@ -57,7 +57,25 @@ async fn handle_request(
         return Ok(res);
     }
 
-    let rel_path_raw = segments[1..].join("/");
+    let mut rel_path_raw = segments[1..].join("/");
+    
+    // Support cross-user profile picture access: GET /arosaina-storage/other_user/.profile_pic.jpg
+    if method == "GET" && segments.len() == 3 && segments[2] == ".profile_pic.jpg" {
+        let target_username = segments[1];
+        if target_username != user.username {
+            if let Ok(Some(other_user)) = auth.get_user_by_username(target_username).await {
+                return handle_get_object(&req, &other_user, ".profile_pic.jpg", files).await;
+            }
+        }
+    }
+
+    // If the first segment matches the current username, strip it to allow bucket/username/path style access
+    if segments.len() > 2 && segments[1] == user.username {
+        rel_path_raw = segments[2..].join("/");
+    } else if segments.len() == 2 && segments[1] == user.username {
+        rel_path_raw = String::new();
+    }
+
     let rel_path = percent_decode_str(&rel_path_raw).decode_utf8_lossy().to_string();
     let is_dir_hint = req.uri().path().ends_with('/');
 

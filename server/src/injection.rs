@@ -23,6 +23,7 @@ use crate::database::{
     user_usecases::{CreateUserUseCase, FindUserByEmailUseCase, FindUserUseCase},
     Database,
 };
+use sea_orm::{DatabaseBackend, Statement};
 use crate::file::compression_service::CompressionService;
 use crate::file::git_service::GitService;
 use crate::file::interfaces::IFileRepository;
@@ -53,8 +54,11 @@ pub async fn setup_injection() -> Result<Services> {
     let file_repo = Arc::new(crate::file::local_repository::FileRepository::new(storage_root.clone()));
     let share_repo = Arc::new(ShareRepository::new("shares.json").await);
 
-    info!("Initialisation de la base de données SQLite...");
-    let db_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:development.db".to_string());
+    info!("Initialisation de la base de données PostgreSQL...");
+    let db_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+        info!("DATABASE_URL non défini, utilisation de la valeur par défaut pour PostgreSQL.");
+        "postgres://aro:aropasssecret@localhost:5432/arodb".to_string()
+    });
     let db = Database::new(&db_url).await?;
     let settings = crate::common::config::load_config();
 
@@ -258,6 +262,7 @@ pub async fn setup_injection() -> Result<Services> {
             last_name: Some("User".into()),
             birth_date: None,
             location: None,
+            profile_pic_path: None,
             created_at: chrono::Utc::now(),
             storage_quota_bytes: 1048576,
             is_active: true,
@@ -330,7 +335,7 @@ pub async fn setup_injection() -> Result<Services> {
         };
         log_access_usecase.execute(&dev_log).await?;
 
-        info!("Données SQLite de développement injectées avec succès.");
+        info!("Données de développement injectées avec succès.");
     }
 
     Ok(Services {

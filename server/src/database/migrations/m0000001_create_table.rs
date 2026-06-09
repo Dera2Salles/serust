@@ -1,4 +1,15 @@
+use sea_orm_migration::prelude::*;
 
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .get_connection()
+            .execute_unprepared(
+                r#"
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     username TEXT UNIQUE NOT NULL,
@@ -197,3 +208,32 @@ CREATE OR REPLACE VIEW v_effective_permissions AS
         l.id AS link_id
     FROM share_links l
     LEFT JOIN read_counters rc ON rc.share_link_id = l.id;
+                "#,
+            )
+            .await
+            .map(|_| ())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .get_connection()
+            .execute_unprepared(
+                r#"
+DROP VIEW IF EXISTS v_effective_permissions;
+DROP TRIGGER IF EXISTS trg_update_read_counters_grant ON access_log;
+DROP FUNCTION IF EXISTS trg_update_read_counters_grant_fn;
+DROP TRIGGER IF EXISTS trg_update_read_counters_link ON access_log;
+DROP FUNCTION IF EXISTS trg_update_read_counters_link_fn;
+DROP TABLE IF EXISTS read_counters;
+DROP TABLE IF EXISTS access_log;
+DROP TABLE IF EXISTS share_grants;
+DROP TABLE IF EXISTS share_links;
+DROP TABLE IF EXISTS files;
+DROP TABLE IF EXISTS admins;
+DROP TABLE IF EXISTS users;
+                "#,
+            )
+            .await
+            .map(|_| ())
+    }
+}

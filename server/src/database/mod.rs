@@ -10,34 +10,25 @@ pub mod share_repository;
 pub mod share_usecases;
 pub mod user_repository;
 pub mod user_usecases;
+pub mod entities;
+pub mod migrations;
 
 use anyhow::Result;
-use sqlx::{
-    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
-    Executor, SqlitePool,
-};
-use std::str::FromStr;
-use std::sync::Arc;
+use ::sea_orm::{Database as SeaDatabase, DatabaseConnection};
+use sea_orm_migration::prelude::*;
+use crate::database::migrations::Migrator;
 
 #[derive(Clone)]
 pub struct Database {
-    pub pool: Arc<SqlitePool>,
+    pub connection: DatabaseConnection,
 }
 
 impl Database {
     pub async fn new(database_url: &str) -> Result<Self> {
-        let options = SqliteConnectOptions::from_str(database_url)?.create_if_missing(true);
+        let connection = SeaDatabase::connect(database_url).await?;
 
-        let pool = SqlitePoolOptions::new()
-            .max_connections(5)
-            .connect_with(options)
-            .await?;
+        Migrator::up(&connection, None).await?;
 
-        let schema = include_str!("schema.sql");
-        pool.execute(schema).await?;
-
-        Ok(Self {
-            pool: Arc::new(pool),
-        })
+        Ok(Self { connection })
     }
 }

@@ -53,15 +53,16 @@ impl AuthService {
                     last_name: db_user.last_name,
                     birth_date: db_user.birth_date,
                     location: db_user.location,
+                    profile_pic_path: db_user.profile_pic_path,
                 })
-            },
-            _ => Err(DomainError::InvalidCredentials),
-        }
-    }
+                }
+                _ => Err(DomainError::InvalidCredentials),
+                }
+                }
 
-    pub async fn get_user_by_username(&self, username: &str) -> Result<Option<User>, DomainError> {
-        match self.find_user_by_username.execute(username).await {
-            Ok(Some(db_user)) => Ok(Some(User {
+                pub async fn get_user_by_username(&self, username: &str) -> Result<Option<User>, DomainError> {
+                match self.find_user_by_username.execute(username).await {
+                Ok(Some(db_user)) => Ok(Some(User {
                 id: db_user.id,
                 username: db_user.username,
                 password_hash: db_user.password_hash,
@@ -70,7 +71,8 @@ impl AuthService {
                 last_name: db_user.last_name,
                 birth_date: db_user.birth_date,
                 location: db_user.location,
-            })),
+                profile_pic_path: db_user.profile_pic_path,
+                })),
             Ok(None) => Ok(None),
             Err(e) => Err(DomainError::Internal(e.to_string())),
         }
@@ -99,6 +101,7 @@ impl AuthService {
             last_name,
             birth_date,
             location,
+            profile_pic_path: None,
             created_at: Utc::now(),
             storage_quota_bytes: self.settings.default_storage_quota_gb * 1024 * 1024 * 1024,
             is_active: false,

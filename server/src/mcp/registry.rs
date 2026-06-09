@@ -617,6 +617,7 @@ impl McpRegistry {
                 last_name: u.last_name,
                 birth_date: u.birth_date,
                 location: u.location,
+                profile_pic_path: u.profile_pic_path,
             }
         } else {
             User {
@@ -628,6 +629,7 @@ impl McpRegistry {
                 last_name: None,
                 birth_date: None,
                 location: None,
+                profile_pic_path: None,
             }
         }
     }

@@ -8,6 +8,8 @@ use crate::database::share_usecases::{
 use crate::share::domain::ShareGrant;
 use crate::share::local_repository::ShareRepository;
 use std::sync::Arc;
+use sea_orm::{Statement, DatabaseBackend, QueryTrait, IntoActiveModel, Set, TryGetable, EntityTrait, ColumnTrait, ConnectionTrait, prelude::*};
+use crate::database::entities::{users, access_log};
 
 pub struct ShareService {
     repo: Arc<ShareRepository>,
@@ -239,57 +241,59 @@ impl ShareService {
     }
 
     pub async fn list_incoming(&self, grantee_username: &str) -> Vec<ShareGrant> {
-        let rows = sqlx::query(
-            "SELECT f.storage_path, u_owner.username as owner_username, u_grantor.username as grantor_username, p.can_read, p.can_write, p.is_expired, p.reads_remaining
-             FROM v_effective_permissions p
-             JOIN files f ON f.id = p.file_id
-             JOIN users u_owner ON u_owner.id = f.owner_id
-             JOIN users u_grantee ON u_grantee.id = p.user_id
-             LEFT JOIN share_grants g ON g.id = p.grant_id
-             LEFT JOIN users u_grantor ON u_grantor.id = g.granted_by
-             WHERE u_grantee.username = ? AND p.source = 'grant' AND p.is_valid = 1"
+        let rows = self.db.connection.query_all(
+            Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"SELECT f.storage_path, u_owner.username as owner_username, u_grantor.username as grantor_username, p.can_read, p.can_write, p.is_expired, p.reads_remaining
+                 FROM v_effective_permissions p
+                 JOIN files f ON f.id = p.file_id
+                 JOIN users u_owner ON u_owner.id = f.owner_id
+                 JOIN users u_grantee ON u_grantee.id = p.user_id
+                 LEFT JOIN share_grants g ON g.id = p.grant_id
+                 LEFT JOIN users u_grantor ON u_grantor.id = g.granted_by
+                 WHERE u_grantee.username = $1 AND p.source = 'grant' AND p.is_valid = TRUE"#,
+                vec![grantee_username.into()],
+            )
         )
-        .bind(grantee_username)
-        .fetch_all(&*self.db.pool)
         .await
         .unwrap_or_default();
 
         rows.into_iter().map(|r| {
-            use sqlx::Row;
             ShareGrant {
-                owner: r.get("owner_username"),
-                path: r.get::<String, _>("storage_path").trim_start_matches('/').to_string(),
+                owner: r.try_get::<String>("", "owner_username").unwrap_or_default(),
+                path: r.try_get::<String>("", "storage_path").unwrap_or_default().trim_start_matches('/').to_string(),
                 grantee: grantee_username.to_string(),
-                can_read: r.get::<i32, _>("can_read") != 0,
-                can_write: r.get::<i32, _>("can_write") != 0,
-                can_download: true,
-                remaining_reads: r.get::<Option<i32>, _>("reads_remaining").map(|v| v as u64),
+                can_read: r.try_get::<bool>("", "can_read").unwrap_or(false),
+                can_write: r.try_get::<bool>("", "can_write").unwrap_or(false),
+                can_download: true, // Assuming download is tied to read for now
+                remaining_reads: r.try_get::<Option<i64>>("", "reads_remaining").unwrap_or(None).map(|v| v as u64),
                 remaining_writes: None,
                 remaining_downloads: None,
                 can_reshare: false,
-                granted_by: r.get::<Option<String>, _>("grantor_username").unwrap_or_else(|| r.get("owner_username")),
+                granted_by: r.try_get::<Option<String>>("", "grantor_username").unwrap_or_else(|_| None).unwrap_or_else(|| r.try_get::<String>("", "owner_username").unwrap_or_default()),
                 expires_at: None,
             }
         }).collect()
     }
 
     pub async fn owners_shared_with(&self, grantee_username: &str) -> Vec<String> {
-        let rows = sqlx::query(
-            "SELECT DISTINCT u_owner.username
-             FROM v_effective_permissions p
-             JOIN files f ON f.id = p.file_id
-             JOIN users u_owner ON u_owner.id = f.owner_id
-             JOIN users u_grantee ON u_grantee.id = p.user_id
-             WHERE u_grantee.username = ? AND p.source = 'grant' AND p.is_valid = 1"
+        let rows = self.db.connection.query_all(
+            Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"SELECT DISTINCT u_owner.username
+                 FROM v_effective_permissions p
+                 JOIN files f ON f.id = p.file_id
+                 JOIN users u_owner ON u_owner.id = f.owner_id
+                 JOIN users u_grantee ON u_grantee.id = p.user_id
+                 WHERE u_grantee.username = $1 AND p.source = 'grant' AND p.is_valid = TRUE"#,
+                vec![grantee_username.into()],
+            )
         )
-        .bind(grantee_username)
-        .fetch_all(&*self.db.pool)
         .await
         .unwrap_or_default();
 
         rows.into_iter().map(|r| {
-            use sqlx::Row;
-            r.get::<String, _>(0)
+            r.try_get_by_index::<String>(0).unwrap_or_default()
         }).collect()
     }
 
@@ -300,29 +304,27 @@ impl ShareService {
         let storage_path = if owner_rel_path.starts_with('/') { owner_rel_path.to_string() } else { format!("/{}", owner_rel_path) };
         
         // A path is readable if it is directly shared OR a parent folder is shared.
-        let query = "
-            SELECT 1 FROM v_effective_permissions p
-            JOIN files f_shared ON f_shared.id = p.file_id
-            JOIN users u_owner ON u_owner.id = f_shared.owner_id
-            JOIN users u_actor ON u_actor.id = p.user_id
-            WHERE u_actor.username = ? 
-              AND u_owner.username = ? 
-              AND p.can_read = 1 
-              AND p.is_valid = 1
-              AND (
-                  f_shared.storage_path = ? 
-                  OR (? || '/') LIKE (f_shared.storage_path || '/%')
-              )
-            LIMIT 1";
-
-        let row = sqlx::query(query)
-            .bind(actor)
-            .bind(owner)
-            .bind(&storage_path)
-            .bind(&storage_path)
-            .fetch_optional(&*self.db.pool)
-            .await
-            .unwrap_or(None);
+        let row = self.db.connection.query_one(
+            Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"SELECT 1 FROM v_effective_permissions p
+                 JOIN files f_shared ON f_shared.id = p.file_id
+                 JOIN users u_owner ON u_owner.id = f_shared.owner_id
+                 JOIN users u_actor ON u_actor.id = p.user_id
+                 WHERE u_actor.username = $1 
+                   AND u_owner.username = $2 
+                   AND p.can_read = TRUE 
+                   AND p.is_valid = TRUE
+                   AND (
+                       f_shared.storage_path = $3 
+                       OR ($3 || '/') LIKE (f_shared.storage_path || '/%')
+                   )
+                 LIMIT 1"#,
+                vec![actor.into(), owner.into(), storage_path.clone().into(), storage_path.clone().into()],
+            )
+        )
+        .await
+        .unwrap_or_default();
 
         row.is_some()
     }
@@ -334,31 +336,28 @@ impl ShareService {
         let storage_path = if owner_rel_path.starts_with('/') { owner_rel_path.to_string() } else { format!("/{}", owner_rel_path) };
         
         // A path is discoverable if it's readable OR it's a parent of a shared item.
-        let query = "
-            SELECT 1 FROM v_effective_permissions p
-            JOIN files f_shared ON f_shared.id = p.file_id
-            JOIN users u_owner ON u_owner.id = f_shared.owner_id
-            JOIN users u_actor ON u_actor.id = p.user_id
-            WHERE u_actor.username = ? 
-              AND u_owner.username = ? 
-              AND p.can_read = 1 
-              AND p.is_valid = 1
-              AND (
-                  f_shared.storage_path = ? 
-                  OR (? || '/') LIKE (f_shared.storage_path || '/%')
-                  OR (f_shared.storage_path || '/') LIKE (? || '/%')
-              )
-            LIMIT 1";
-
-        let row = sqlx::query(query)
-            .bind(actor)
-            .bind(owner)
-            .bind(&storage_path)
-            .bind(&storage_path)
-            .bind(&storage_path)
-            .fetch_optional(&*self.db.pool)
-            .await
-            .unwrap_or(None);
+        let row = self.db.connection.query_one(
+            Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"SELECT 1 FROM v_effective_permissions p
+                 JOIN files f_shared ON f_shared.id = p.file_id
+                 JOIN users u_owner ON u_owner.id = f_shared.owner_id
+                 JOIN users u_actor ON u_actor.id = p.user_id
+                 WHERE u_actor.username = $1 
+                   AND u_owner.username = $2 
+                   AND p.can_read = TRUE 
+                   AND p.is_valid = TRUE
+                   AND (
+                       f_shared.storage_path = $3 
+                       OR ($3 || '/') LIKE (f_shared.storage_path || '/%')
+                       OR (f_shared.storage_path || '/') LIKE ($3 || '/%')
+                   )
+                 LIMIT 1"#,
+                vec![actor.into(), owner.into(), storage_path.clone().into(), storage_path.clone().into(), storage_path.clone().into()],
+            )
+        )
+        .await
+        .unwrap_or_default();
 
         row.is_some()
     }
@@ -369,29 +368,27 @@ impl ShareService {
         }
         let storage_path = if owner_rel_path.starts_with('/') { owner_rel_path.to_string() } else { format!("/{}", owner_rel_path) };
         
-        let query = "
-            SELECT 1 FROM v_effective_permissions p
-            JOIN files f_shared ON f_shared.id = p.file_id
-            JOIN users u_owner ON u_owner.id = f_shared.owner_id
-            JOIN users u_actor ON u_actor.id = p.user_id
-            WHERE u_actor.username = ? 
-              AND u_owner.username = ? 
-              AND p.can_write = 1 
-              AND p.is_valid = 1
-              AND (
-                  f_shared.storage_path = ? 
-                  OR (? || '/') LIKE (f_shared.storage_path || '/%')
-              )
-            LIMIT 1";
-
-        let row = sqlx::query(query)
-            .bind(actor)
-            .bind(owner)
-            .bind(&storage_path)
-            .bind(&storage_path)
-            .fetch_optional(&*self.db.pool)
-            .await
-            .unwrap_or(None);
+        let row = self.db.connection.query_one(
+            Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"SELECT 1 FROM v_effective_permissions p
+                 JOIN files f_shared ON f_shared.id = p.file_id
+                 JOIN users u_owner ON u_owner.id = f_shared.owner_id
+                 JOIN users u_actor ON u_actor.id = p.user_id
+                 WHERE u_actor.username = $1 
+                   AND u_owner.username = $2 
+                   AND p.can_write = TRUE 
+                   AND p.is_valid = TRUE
+                   AND (
+                       f_shared.storage_path = $3 
+                       OR ($3 || '/') LIKE (f_shared.storage_path || '/%')
+                   )
+                 LIMIT 1"#,
+                vec![actor.into(), owner.into(), storage_path.clone().into(), storage_path.clone().into()],
+            )
+        )
+        .await
+        .unwrap_or_default();
 
         row.is_some()
     }
@@ -411,37 +408,46 @@ impl ShareService {
         }
         // Log access to trigger read counter
         let storage_path = if owner_rel_path.starts_with('/') { owner_rel_path.to_string() } else { format!("/{}", owner_rel_path) };
-        let row = sqlx::query(
-            "SELECT p.file_id, p.grant_id FROM v_effective_permissions p
-             JOIN files f ON f.id = p.file_id
-             JOIN users u_owner ON u_owner.id = f.owner_id
-             JOIN users u_actor ON u_actor.id = p.user_id
-             WHERE u_actor.username = ? AND u_owner.username = ? AND f.storage_path = ? AND p.can_read = 1 AND p.is_valid = 1"
+        let row = self.db.connection.query_one(
+            Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"SELECT p.file_id, p.grant_id FROM v_effective_permissions p
+                 JOIN files f ON f.id = p.file_id
+                 JOIN users u_owner ON u_owner.id = f.owner_id
+                 JOIN users u_actor ON u_actor.id = p.user_id
+                 WHERE u_actor.username = $1 AND u_owner.username = $2 AND f.storage_path = $3 AND p.can_read = TRUE AND p.is_valid = TRUE"#,
+                vec![actor.into(), owner.into(), storage_path.into()],
+            )
         )
-        .bind(actor)
-        .bind(owner)
-        .bind(&storage_path)
-        .fetch_optional(&*self.db.pool)
         .await
         .map_err(|e| DomainError::Internal(e.to_string()))?;
 
         if let Some(r) = row {
-            use sqlx::Row;
-            let file_id: String = r.get("file_id");
-            let grant_id: Option<String> = r.get("grant_id");
-            let actor_row = sqlx::query("SELECT id FROM users WHERE username = ?")
-                .bind(actor)
-                .fetch_one(&*self.db.pool).await
-                .map_err(|e| DomainError::Internal(e.to_string()))?;
-            let actor_id: String = actor_row.get(0);
+            // use sea_orm::TryGetable; // Already imported at the top
+            let file_id: String = r.try_get::<String>("", "file_id").map_err(|e| DomainError::Internal(e.to_string()))?;
+            let grant_id: Option<String> = r.try_get::<Option<String>>("", "grant_id").map_err(|e| DomainError::Internal(e.to_string()))?;
+            
+            let actor_model = users::Entity::find()
+                .filter(users::Column::Username.eq(actor))
+                .one(&self.db.connection)
+                .await
+                .map_err(|e| DomainError::Internal(e.to_string()))?
+                .ok_or(DomainError::Internal("Actor not found".to_string()))?;
+            let actor_id: String = actor_model.id;
 
-            sqlx::query(
-                "INSERT INTO access_log (file_id, accessed_by, grant_id, action, accessed_at) VALUES (?, ?, ?, 'read', CURRENT_TIMESTAMP)"
-            )
-            .bind(file_id)
-            .bind(actor_id)
-            .bind(grant_id)
-            .execute(&*self.db.pool).await
+            let active_model = access_log::ActiveModel {
+                file_id: Set(file_id),
+                accessed_by: Set(Some(actor_id)),
+                share_link_id: Set(None),
+                grant_id: Set(grant_id),
+                action: Set(Some("read".to_string())),
+                accessed_at: Set(chrono::Utc::now().into()),
+                ip_address: Set(None),
+                user_agent: Set(None),
+                bytes_transferred: Set(None),
+                ..Default::default()
+            };
+            access_log::Entity::insert(active_model).exec(&self.db.connection).await
             .map_err(|e| DomainError::Internal(e.to_string()))?;
         }
 

@@ -10,6 +10,7 @@ pub struct User {
     pub last_name: Option<String>,
     pub birth_date: Option<String>,
     pub location: Option<String>,
+    pub profile_pic_path: Option<String>,
 }
 
 #[allow(dead_code)]
@@ -29,6 +30,7 @@ impl User {
             last_name: None,
             birth_date: None,
             location: None,
+            profile_pic_path: None,
         }
     }
 }

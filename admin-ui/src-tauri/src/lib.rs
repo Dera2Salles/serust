@@ -39,6 +39,11 @@ struct GlobalSettings {
     s3_port: u16,
 }
 
+fn get_database_url() -> String {
+    std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://aro:aropasssecret@localhost:5432/arodb".to_string())
+}
+
 #[tauri::command]
 async fn start_server(state: State<'_, Arc<Mutex<ServerState>>>) -> Result<String, String> {
     let mut state = state.lock().map_err(|_| "Failed to lock state")?;
@@ -47,14 +52,10 @@ async fn start_server(state: State<'_, Arc<Mutex<ServerState>>>) -> Result<Strin
     }
 
     let handle = tokio::spawn(async move {
-        // Set environment variables for the internal server
-        if std::env::var("DATABASE_URL").is_err() {
-            std::env::set_var("DATABASE_URL", "sqlite:../../development.db");
-        }
         if std::env::var("STORAGE_ROOT").is_err() {
             std::env::set_var("STORAGE_ROOT", "../../storage");
         }
-        
+
         if let Err(e) = tcp_file_server::run_server().await {
             eprintln!("Internal server error: {}", e);
         }
@@ -111,11 +112,12 @@ fn read_server_logs() -> Result<String, String> {
 
 #[tauri::command]
 async fn get_users_from_db() -> Result<Vec<Value>, String> {
-    use sqlx::sqlite::SqlitePoolOptions;
+    use sqlx::postgres::PgPoolOptions;
     use sqlx::Row;
-    let pool = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect("sqlite:../../development.db")
+
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&get_database_url())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -123,8 +125,8 @@ async fn get_users_from_db() -> Result<Vec<Value>, String> {
         "SELECT u.id, u.username, u.email, u.is_active, u.storage_quota_bytes, u.created_at, \
          COALESCE(SUM(f.size_bytes), 0) as storage_used_bytes \
          FROM users u \
-         LEFT JOIN files f ON f.owner_id = u.id AND f.is_deleted = 0 \
-         GROUP BY u.id"
+         LEFT JOIN files f ON f.owner_id = u.id AND f.is_deleted = false \
+         GROUP BY u.id, u.username, u.email, u.is_active, u.storage_quota_bytes, u.created_at"
     )
     .fetch_all(&pool)
     .await
@@ -139,7 +141,7 @@ async fn get_users_from_db() -> Result<Vec<Value>, String> {
             "is_active": r.get::<bool, _>("is_active"),
             "storage_quota_bytes": r.get::<i64, _>("storage_quota_bytes"),
             "storage_used_bytes": r.get::<i64, _>("storage_used_bytes"),
-            "created_at": r.get::<chrono::DateTime<chrono::Utc>, _>("created_at"),
+            "created_at": r.get::<chrono::DateTime<chrono::Utc>, _>("created_at").to_rfc3339(),
         }));
     }
     Ok(users)
@@ -148,40 +150,46 @@ async fn get_users_from_db() -> Result<Vec<Value>, String> {
 #[tauri::command]
 async fn create_user_db(username: String, email: String, password_raw: String, quota: i64) -> Result<(), String> {
     use sha2::{Digest, Sha256};
+    use sqlx::postgres::PgPoolOptions;
+
     let mut hasher = Sha256::new();
     hasher.update(password_raw.as_bytes());
     let password_hash = hex::encode(hasher.finalize());
     let id = uuid::Uuid::new_v4().to_string();
 
-    use sqlx::sqlite::SqlitePoolOptions;
-    let pool = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect("sqlite:../../development.db")
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&get_database_url())
         .await
         .map_err(|e| e.to_string())?;
 
-    sqlx::query("INSERT INTO users (id, username, password_hash, email, storage_quota_bytes, is_active) VALUES (?, ?, ?, ?, ?, 0)")
-        .bind(id)
-        .bind(username)
-        .bind(password_hash)
-        .bind(email)
-        .bind(quota)
-        .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    sqlx::query(
+        "INSERT INTO users (id, username, password_hash, email, storage_quota_bytes, is_active, created_at) \
+         VALUES ($1, $2, $3, $4, $5, false, NOW())"
+    )
+    .bind(id)
+    .bind(username)
+    .bind(password_hash)
+    .bind(email)
+    .bind(quota)
+    .execute(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
     Ok(())
 }
 
 #[tauri::command]
 async fn update_user_db(id: String, email: String, quota: i64, is_active: bool) -> Result<(), String> {
-    use sqlx::sqlite::SqlitePoolOptions;
-    let pool = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect("sqlite:../../development.db")
+    use sqlx::postgres::PgPoolOptions;
+
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&get_database_url())
         .await
         .map_err(|e| e.to_string())?;
 
-    sqlx::query("UPDATE users SET email = ?, storage_quota_bytes = ?, is_active = ? WHERE id = ?")
+    sqlx::query("UPDATE users SET email = $1, storage_quota_bytes = $2, is_active = $3 WHERE id = $4")
         .bind(email)
         .bind(quota)
         .bind(is_active)
@@ -189,41 +197,46 @@ async fn update_user_db(id: String, email: String, quota: i64, is_active: bool) 
         .execute(&pool)
         .await
         .map_err(|e| e.to_string())?;
+
     Ok(())
 }
 
 #[tauri::command]
 async fn delete_user_db(id: String) -> Result<(), String> {
-    use sqlx::sqlite::SqlitePoolOptions;
-    let pool = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect("sqlite:../../development.db")
+    use sqlx::postgres::PgPoolOptions;
+
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&get_database_url())
         .await
         .map_err(|e| e.to_string())?;
 
-    sqlx::query("DELETE FROM users WHERE id = ?")
+    sqlx::query("DELETE FROM users WHERE id = $1")
         .bind(id)
         .execute(&pool)
         .await
         .map_err(|e| e.to_string())?;
+
     Ok(())
 }
 
 #[tauri::command]
 async fn get_all_shares_db() -> Result<Vec<Value>, String> {
-    use sqlx::sqlite::SqlitePoolOptions;
+    use sqlx::postgres::PgPoolOptions;
     use sqlx::Row;
-    let pool = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect("sqlite:../../development.db")
+
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&get_database_url())
         .await
         .map_err(|e| e.to_string())?;
 
     let grants = sqlx::query(
-        "SELECT sg.id, u1.username as owner, u2.username as grantee, f.filename, f.storage_path, sg.can_read, sg.can_write, sg.expires_at 
-         FROM share_grants sg 
-         JOIN files f ON sg.file_id = f.id 
-         JOIN users u1 ON sg.granted_by = u1.id 
+        "SELECT sg.id, u1.username as owner, u2.username as grantee, f.filename, f.storage_path, \
+         sg.can_read, sg.can_write, sg.expires_at \
+         FROM share_grants sg \
+         JOIN files f ON sg.file_id = f.id \
+         JOIN users u1 ON sg.granted_by = u1.id \
          JOIN users u2 ON sg.granted_to = u2.id"
     )
     .fetch_all(&pool)
@@ -242,14 +255,15 @@ async fn get_all_shares_db() -> Result<Vec<Value>, String> {
             "path": r.get::<String, _>("storage_path"),
             "can_read": r.get::<bool, _>("can_read"),
             "can_write": r.get::<bool, _>("can_write"),
-            "expires_at": expires_at,
+            "expires_at": expires_at.map(|d| d.to_rfc3339()),
         }));
     }
 
     let links = sqlx::query(
-        "SELECT sl.id, u.username as owner, f.filename, f.storage_path, sl.token, sl.label, sl.can_read, sl.can_write, sl.expires_at, sl.is_active 
-         FROM share_links sl 
-         JOIN files f ON sl.file_id = f.id 
+        "SELECT sl.id, u.username as owner, f.filename, f.storage_path, sl.token, sl.label, \
+         sl.can_read, sl.can_write, sl.expires_at, sl.is_active \
+         FROM share_links sl \
+         JOIN files f ON sl.file_id = f.id \
          JOIN users u ON sl.created_by = u.id"
     )
     .fetch_all(&pool)
@@ -269,7 +283,7 @@ async fn get_all_shares_db() -> Result<Vec<Value>, String> {
             "label": r.get::<Option<String>, _>("label"),
             "can_read": r.get::<bool, _>("can_read"),
             "can_write": r.get::<bool, _>("can_write"),
-            "expires_at": expires_at,
+            "expires_at": expires_at.map(|d| d.to_rfc3339()),
             "is_active": r.get::<bool, _>("is_active"),
         }));
     }
@@ -279,27 +293,39 @@ async fn get_all_shares_db() -> Result<Vec<Value>, String> {
 
 #[tauri::command]
 async fn revoke_share_grant_db(id: String) -> Result<(), String> {
-    use sqlx::sqlite::SqlitePoolOptions;
-    let pool = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect("sqlite:../../development.db")
+    use sqlx::postgres::PgPoolOptions;
+
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&get_database_url())
         .await
         .map_err(|e| e.to_string())?;
 
-    sqlx::query("DELETE FROM share_grants WHERE id = ?").bind(id).execute(&pool).await.map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM share_grants WHERE id = $1")
+        .bind(id)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
     Ok(())
 }
 
 #[tauri::command]
 async fn revoke_share_link_db(id: String) -> Result<(), String> {
-    use sqlx::sqlite::SqlitePoolOptions;
-    let pool = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect("sqlite:../../development.db")
+    use sqlx::postgres::PgPoolOptions;
+
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&get_database_url())
         .await
         .map_err(|e| e.to_string())?;
 
-    sqlx::query("DELETE FROM share_links WHERE id = ?").bind(id).execute(&pool).await.map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM share_links WHERE id = $1")
+        .bind(id)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
     Ok(())
 }
 

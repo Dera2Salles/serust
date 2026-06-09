@@ -1,4 +1,5 @@
 use crate::database::analytics_repository::AnalyticsRepository;
+use crate::database::entities::{prelude::*, access_log, read_counters};
 use crate::database::interfaces::{
     IFileDatabaseRepository, IShareDatabaseRepository, IUserRepository,
 };
@@ -8,6 +9,7 @@ use crate::database::{
 };
 use crate::file::service::FileService;
 use crate::mcp::registry::McpRegistry;
+use sea_orm::{Set, EntityTrait, ColumnTrait, QueryFilter};
 use crate::mcp::types::{
     InitializeResult, JsonRpcRequest, JsonRpcResponse, PromptsCapability, ResourcesCapability,
     ServerCapabilities, ServerInfo, ToolsCapability,
@@ -141,11 +143,12 @@ async fn handle_http(
             id: db_user.as_ref().map(|u| u.id).unwrap_or_else(uuid::Uuid::nil),
             username: username.to_string(),
             password_hash: String::new(),
-            email: db_user.map(|u| u.email).unwrap_or_default(),
+            email: db_user.as_ref().map(|u| u.email.clone()).unwrap_or_default(),
             first_name: None,
             last_name: None,
             birth_date: None,
             location: None,
+            profile_pic_path: db_user.and_then(|u| u.profile_pic_path),
         };
         let (total_bytes, file_count, dir_count) = state.registry.recursive_stats(&user, "/").await;
         return Ok(json_response(
@@ -420,16 +423,14 @@ async fn handle_public_download(
     }
 
     // Read counter check
-    let read_count_row = sqlx::query("SELECT read_count FROM read_counters WHERE share_link_id = ?")
-        .bind(&link.id.to_string())
-        .fetch_optional(&*state.db.pool)
+    let read_count_model = read_counters::Entity::find()
+        .filter(read_counters::Column::ShareLinkId.eq(link.id.to_string()))
+        .one(&state.db.connection)
         .await
         .unwrap_or(None);
 
-    if let (Some(max), Some(row)) = (link.max_reads, read_count_row) {
-        use sqlx::Row;
-        let count: i64 = row.try_get("read_count").unwrap_or(0);
-        if count >= max {
+    if let (Some(max), Some(model)) = (link.max_reads, read_count_model) {
+        if model.read_count >= max {
             return json_response(
                 StatusCode::GONE,
                 json!({"error": "Maximum read count reached"}),
@@ -476,6 +477,7 @@ async fn handle_public_download(
         last_name: owner.last_name.clone(),
         birth_date: owner.birth_date.clone(),
         location: owner.location.clone(),
+        profile_pic_path: owner.profile_pic_path.clone(),
     };
 
     let data = match state
@@ -485,16 +487,19 @@ async fn handle_public_download(
     {
         Ok(d) => {
             // Log the access to trigger read counter update
-            use sqlx::Executor;
-            let _ = state.db.pool.execute(sqlx::query(
-                "INSERT INTO access_log (file_id, accessed_by, share_link_id, grant_id, action, accessed_at, bytes_transferred) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)"
-            )
-            .bind(&link.file_id.to_string())
-            .bind(None::<String>)
-            .bind(&Some(link.id.to_string()))
-            .bind(None::<String>)
-            .bind("read")
-            .bind(Some(d.len() as i64))).await;
+            let active_model = access_log::ActiveModel {
+                file_id: Set(link.file_id.to_string()),
+                accessed_by: Set(None),
+                share_link_id: Set(Some(link.id.to_string())),
+                grant_id: Set(None),
+                action: Set(Some("read".to_string())),
+                accessed_at: Set(chrono::Utc::now().into()),
+                ip_address: Set(None),
+                user_agent: Set(None),
+                bytes_transferred: Set(Some(d.len() as i64)),
+                ..Default::default()
+            };
+            let _ = access_log::Entity::insert(active_model).exec(&state.db.connection).await;
 
             d
         },
