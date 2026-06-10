@@ -1,5 +1,5 @@
-mod common;
-mod database;
+pub mod common;
+pub mod database;
 mod file;
 mod injection;
 mod log;

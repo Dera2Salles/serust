@@ -1,12 +1,16 @@
-use std::sync::{Arc, Mutex};
-use sysinfo::{Disks, System};
-use serde::{Serialize, Deserialize};
-use tauri::State;
+use sea_orm::{entity::*, query::*, Database as SeaDatabase, DatabaseConnection};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::sync::Arc;
+use sysinfo::{Disks, System};
+use tauri::State;
+use tcp_file_server::database::entities::{prelude::*, users};
+use tokio::sync::Mutex;
 
 struct ServerState {
     handle: Option<tokio::task::JoinHandle<()>>,
     sys: System,
+    db: Option<DatabaseConnection>,
 }
 
 impl Default for ServerState {
@@ -14,6 +18,7 @@ impl Default for ServerState {
         Self {
             handle: None,
             sys: System::new_all(),
+            db: None,
         }
     }
 }
@@ -39,14 +44,23 @@ struct GlobalSettings {
     s3_port: u16,
 }
 
-fn get_database_url() -> String {
-    std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://aro:aropasssecret@localhost:5432/arodb".to_string())
+async fn get_db(state: &State<'_, Arc<Mutex<ServerState>>>) -> Result<DatabaseConnection, String> {
+    let mut state_lock = state.lock().await;
+    if let Some(db) = &state_lock.db {
+        return Ok(db.clone());
+    }
+    let db_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://aro:aropasssecret@localhost:5432/arodb".to_string());
+    let db = SeaDatabase::connect(&db_url)
+        .await
+        .map_err(|e| e.to_string())?;
+    state_lock.db = Some(db.clone());
+    Ok(db)
 }
 
 #[tauri::command]
 async fn start_server(state: State<'_, Arc<Mutex<ServerState>>>) -> Result<String, String> {
-    let mut state = state.lock().map_err(|_| "Failed to lock state")?;
+    let mut state = state.lock().await;
     if state.handle.is_some() {
         return Err("Server is already running".into());
     }
@@ -66,8 +80,8 @@ async fn start_server(state: State<'_, Arc<Mutex<ServerState>>>) -> Result<Strin
 }
 
 #[tauri::command]
-fn stop_server(state: State<'_, Arc<Mutex<ServerState>>>) -> Result<String, String> {
-    let mut state = state.lock().map_err(|_| "Failed to lock state")?;
+async fn stop_server(state: State<'_, Arc<Mutex<ServerState>>>) -> Result<String, String> {
+    let mut state = state.lock().await;
     if let Some(handle) = state.handle.take() {
         handle.abort();
         Ok("Server stopped (aborted)".into())
@@ -77,14 +91,14 @@ fn stop_server(state: State<'_, Arc<Mutex<ServerState>>>) -> Result<String, Stri
 }
 
 #[tauri::command]
-fn get_server_status(state: State<'_, Arc<Mutex<ServerState>>>) -> bool {
-    let state = state.lock().unwrap();
-    state.handle.is_some()
+async fn get_server_status(state: State<'_, Arc<Mutex<ServerState>>>) -> Result<bool, String> {
+    let state = state.lock().await;
+    Ok(state.handle.is_some())
 }
 
 #[tauri::command]
-fn get_system_info(state: State<'_, Arc<Mutex<ServerState>>>) -> SystemInfo {
-    let mut state = state.lock().unwrap();
+async fn get_system_info(state: State<'_, Arc<Mutex<ServerState>>>) -> Result<SystemInfo, String> {
+    let mut state = state.lock().await;
     state.sys.refresh_all();
 
     let disks = Disks::new_with_refreshed_list();
@@ -95,196 +109,189 @@ fn get_system_info(state: State<'_, Arc<Mutex<ServerState>>>) -> SystemInfo {
         used_disk += disk.total_space() - disk.available_space();
     }
 
-    SystemInfo {
+    Ok(SystemInfo {
         total_disk,
         used_disk,
         os_name: System::name().unwrap_or_else(|| "Unknown".into()),
         cpu_usage: state.sys.global_cpu_usage(),
         memory_usage: state.sys.used_memory(),
-    }
+    })
 }
 
 #[tauri::command]
 fn read_server_logs() -> Result<String, String> {
-    std::fs::read_to_string("../../server.log")
-        .map_err(|e| format!("Failed to read logs: {}", e))
+    std::fs::read_to_string("../../server.log").map_err(|e| format!("Failed to read logs: {}", e))
 }
 
 #[tauri::command]
-async fn get_users_from_db() -> Result<Vec<Value>, String> {
-    use sqlx::postgres::PgPoolOptions;
-    use sqlx::Row;
+async fn get_users_from_db(
+    state: State<'_, Arc<Mutex<ServerState>>>,
+) -> Result<Vec<Value>, String> {
+    let db = get_db(&state).await?;
 
-    let pool = PgPoolOptions::new()
-        .max_connections(2)
-        .connect(&get_database_url())
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let rows = sqlx::query(
-        "SELECT u.id, u.username, u.email, u.is_active, u.storage_quota_bytes, u.created_at, \
-         COALESCE(SUM(f.size_bytes), 0) as storage_used_bytes \
+    let rows = db
+        .query_all(sea_orm::Statement::from_string(
+            sea_orm::DatabaseBackend::Postgres,
+            "SELECT u.id, u.username, u.email, u.is_active, u.storage_quota_bytes, u.created_at, \
+         COALESCE(SUM(f.size_bytes), 0)::BIGINT as storage_used_bytes \
          FROM users u \
          LEFT JOIN files f ON f.owner_id = u.id AND f.is_deleted = false \
          GROUP BY u.id, u.username, u.email, u.is_active, u.storage_quota_bytes, u.created_at"
-    )
-    .fetch_all(&pool)
-    .await
-    .map_err(|e| e.to_string())?;
+                .to_string(),
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
 
     let mut users = Vec::new();
-    for r in rows {
+    for row in rows {
+        let created_at: chrono::DateTime<chrono::FixedOffset> =
+            row.try_get("", "created_at").map_err(|e| e.to_string())?;
         users.push(serde_json::json!({
-            "id": r.get::<String, _>("id"),
-            "username": r.get::<String, _>("username"),
-            "email": r.get::<String, _>("email"),
-            "is_active": r.get::<bool, _>("is_active"),
-            "storage_quota_bytes": r.get::<i64, _>("storage_quota_bytes"),
-            "storage_used_bytes": r.get::<i64, _>("storage_used_bytes"),
-            "created_at": r.get::<chrono::DateTime<chrono::Utc>, _>("created_at").to_rfc3339(),
+            "id": row.try_get::<String>("", "id").map_err(|e| e.to_string())?,
+            "username": row.try_get::<String>("", "username").map_err(|e| e.to_string())?,
+            "email": row.try_get::<String>("", "email").map_err(|e| e.to_string())?,
+            "is_active": row.try_get::<bool>("", "is_active").map_err(|e| e.to_string())?,
+            "storage_quota_bytes": row.try_get::<i64>("", "storage_quota_bytes").map_err(|e| e.to_string())?,
+            "storage_used_bytes": row.try_get::<i64>("", "storage_used_bytes").map_err(|e| e.to_string())?,
+            "created_at": created_at.to_rfc3339(),
         }));
     }
+
     Ok(users)
 }
 
 #[tauri::command]
-async fn create_user_db(username: String, email: String, password_raw: String, quota: i64) -> Result<(), String> {
+async fn create_user_db(
+    state: State<'_, Arc<Mutex<ServerState>>>,
+    username: String,
+    email: String,
+    password_raw: String,
+    quota: i64,
+) -> Result<(), String> {
     use sha2::{Digest, Sha256};
-    use sqlx::postgres::PgPoolOptions;
+    let db = get_db(&state).await?;
 
     let mut hasher = Sha256::new();
     hasher.update(password_raw.as_bytes());
     let password_hash = hex::encode(hasher.finalize());
     let id = uuid::Uuid::new_v4().to_string();
 
-    let pool = PgPoolOptions::new()
-        .max_connections(2)
-        .connect(&get_database_url())
-        .await
-        .map_err(|e| e.to_string())?;
+    let new_user = users::ActiveModel {
+        id: Set(id),
+        username: Set(username),
+        password_hash: Set(password_hash),
+        email: Set(email),
+        storage_quota_bytes: Set(quota),
+        is_active: Set(false),
+        created_at: Set(chrono::Utc::now().into()),
+        ..Default::default()
+    };
 
-    sqlx::query(
-        "INSERT INTO users (id, username, password_hash, email, storage_quota_bytes, is_active, created_at) \
-         VALUES ($1, $2, $3, $4, $5, false, NOW())"
-    )
-    .bind(id)
-    .bind(username)
-    .bind(password_hash)
-    .bind(email)
-    .bind(quota)
-    .execute(&pool)
-    .await
-    .map_err(|e| e.to_string())?;
-
+    new_user.insert(&db).await.map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
-async fn update_user_db(id: String, email: String, quota: i64, is_active: bool) -> Result<(), String> {
-    use sqlx::postgres::PgPoolOptions;
+async fn update_user_db(
+    state: State<'_, Arc<Mutex<ServerState>>>,
+    id: String,
+    email: String,
+    quota: i64,
+    is_active: bool,
+) -> Result<(), String> {
+    let db = get_db(&state).await?;
 
-    let pool = PgPoolOptions::new()
-        .max_connections(2)
-        .connect(&get_database_url())
+    let user = Users::find_by_id(id)
+        .one(&db)
         .await
         .map_err(|e| e.to_string())?;
+    if let Some(user) = user {
+        let mut user: users::ActiveModel = user.into();
+        user.email = Set(email);
+        user.storage_quota_bytes = Set(quota);
+        user.is_active = Set(is_active);
+        user.update(&db).await.map_err(|e| e.to_string())?;
+        Ok(())
+    } else {
+        Err("User not found".into())
+    }
+}
 
-    sqlx::query("UPDATE users SET email = $1, storage_quota_bytes = $2, is_active = $3 WHERE id = $4")
-        .bind(email)
-        .bind(quota)
-        .bind(is_active)
-        .bind(id)
-        .execute(&pool)
+#[tauri::command]
+async fn delete_user_db(
+    state: State<'_, Arc<Mutex<ServerState>>>,
+    id: String,
+) -> Result<(), String> {
+    let db = get_db(&state).await?;
+    Users::delete_by_id(id)
+        .exec(&db)
         .await
         .map_err(|e| e.to_string())?;
-
     Ok(())
 }
 
 #[tauri::command]
-async fn delete_user_db(id: String) -> Result<(), String> {
-    use sqlx::postgres::PgPoolOptions;
+async fn get_all_shares_db(
+    state: State<'_, Arc<Mutex<ServerState>>>,
+) -> Result<Vec<Value>, String> {
+    let db = get_db(&state).await?;
 
-    let pool = PgPoolOptions::new()
-        .max_connections(2)
-        .connect(&get_database_url())
-        .await
-        .map_err(|e| e.to_string())?;
-
-    sqlx::query("DELETE FROM users WHERE id = $1")
-        .bind(id)
-        .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    Ok(())
-}
-
-#[tauri::command]
-async fn get_all_shares_db() -> Result<Vec<Value>, String> {
-    use sqlx::postgres::PgPoolOptions;
-    use sqlx::Row;
-
-    let pool = PgPoolOptions::new()
-        .max_connections(2)
-        .connect(&get_database_url())
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let grants = sqlx::query(
-        "SELECT sg.id, u1.username as owner, u2.username as grantee, f.filename, f.storage_path, \
+    let grants = db.query_all(sea_orm::Statement::from_string(
+        sea_orm::DatabaseBackend::Postgres,
+        "SELECT sg.id, u1.username as owner, u2.username as grantee, f.filename, f.storage_path as path, \
          sg.can_read, sg.can_write, sg.expires_at \
          FROM share_grants sg \
          JOIN files f ON sg.file_id = f.id \
          JOIN users u1 ON sg.granted_by = u1.id \
-         JOIN users u2 ON sg.granted_to = u2.id"
-    )
-    .fetch_all(&pool)
+         JOIN users u2 ON sg.granted_to = u2.id".to_string(),
+    ))
     .await
     .map_err(|e| e.to_string())?;
 
     let mut list = Vec::new();
-    for r in grants {
-        let expires_at: Option<chrono::DateTime<chrono::Utc>> = r.try_get("expires_at").unwrap_or(None);
+    for row in grants {
+        let expires_at: Option<chrono::DateTime<chrono::FixedOffset>> =
+            row.try_get("", "expires_at").unwrap_or(None);
         list.push(serde_json::json!({
-            "id": r.get::<String, _>("id"),
+            "id": row.try_get::<String>("", "id").map_err(|e| e.to_string())?,
             "type": "direct",
-            "owner": r.get::<String, _>("owner"),
-            "grantee": r.get::<String, _>("grantee"),
-            "filename": r.get::<String, _>("filename"),
-            "path": r.get::<String, _>("storage_path"),
-            "can_read": r.get::<bool, _>("can_read"),
-            "can_write": r.get::<bool, _>("can_write"),
+            "owner": row.try_get::<String>("", "owner").map_err(|e| e.to_string())?,
+            "grantee": row.try_get::<String>("", "grantee").map_err(|e| e.to_string())?,
+            "filename": row.try_get::<String>("", "filename").map_err(|e| e.to_string())?,
+            "path": row.try_get::<String>("", "path").map_err(|e| e.to_string())?,
+            "can_read": row.try_get::<bool>("", "can_read").map_err(|e| e.to_string())?,
+            "can_write": row.try_get::<bool>("", "can_write").map_err(|e| e.to_string())?,
             "expires_at": expires_at.map(|d| d.to_rfc3339()),
         }));
     }
 
-    let links = sqlx::query(
-        "SELECT sl.id, u.username as owner, f.filename, f.storage_path, sl.token, sl.label, \
+    let links = db.query_all(sea_orm::Statement::from_string(
+        sea_orm::DatabaseBackend::Postgres,
+        "SELECT sl.id, u.username as owner, f.filename, f.storage_path as path, sl.token, sl.label, \
          sl.can_read, sl.can_write, sl.expires_at, sl.is_active \
          FROM share_links sl \
          JOIN files f ON sl.file_id = f.id \
-         JOIN users u ON sl.created_by = u.id"
-    )
-    .fetch_all(&pool)
+         JOIN users u ON sl.created_by = u.id".to_string(),
+    ))
     .await
     .map_err(|e| e.to_string())?;
 
-    for r in links {
-        let expires_at: Option<chrono::DateTime<chrono::Utc>> = r.try_get("expires_at").unwrap_or(None);
+    for row in links {
+        let expires_at: Option<chrono::DateTime<chrono::FixedOffset>> =
+            row.try_get("", "expires_at").unwrap_or(None);
         list.push(serde_json::json!({
-            "id": r.get::<String, _>("id"),
+            "id": row.try_get::<String>("", "id").map_err(|e| e.to_string())?,
             "type": "link",
-            "owner": r.get::<String, _>("owner"),
+            "owner": row.try_get::<String>("", "owner").map_err(|e| e.to_string())?,
             "grantee": "Public (Link)",
-            "filename": r.get::<String, _>("filename"),
-            "path": r.get::<String, _>("storage_path"),
-            "token": r.get::<String, _>("token"),
-            "label": r.get::<Option<String>, _>("label"),
-            "can_read": r.get::<bool, _>("can_read"),
-            "can_write": r.get::<bool, _>("can_write"),
+            "filename": row.try_get::<String>("", "filename").map_err(|e| e.to_string())?,
+            "path": row.try_get::<String>("", "path").map_err(|e| e.to_string())?,
+            "token": row.try_get::<String>("", "token").map_err(|e| e.to_string())?,
+            "label": row.try_get::<Option<String>>("", "label").unwrap_or(None),
+            "can_read": row.try_get::<bool>("", "can_read").map_err(|e| e.to_string())?,
+            "can_write": row.try_get::<bool>("", "can_write").map_err(|e| e.to_string())?,
             "expires_at": expires_at.map(|d| d.to_rfc3339()),
-            "is_active": r.get::<bool, _>("is_active"),
+            "is_active": row.try_get::<bool>("", "is_active").map_err(|e| e.to_string())?,
         }));
     }
 
@@ -292,40 +299,28 @@ async fn get_all_shares_db() -> Result<Vec<Value>, String> {
 }
 
 #[tauri::command]
-async fn revoke_share_grant_db(id: String) -> Result<(), String> {
-    use sqlx::postgres::PgPoolOptions;
-
-    let pool = PgPoolOptions::new()
-        .max_connections(2)
-        .connect(&get_database_url())
+async fn revoke_share_grant_db(
+    state: State<'_, Arc<Mutex<ServerState>>>,
+    id: String,
+) -> Result<(), String> {
+    let db = get_db(&state).await?;
+    ShareGrants::delete_by_id(id)
+        .exec(&db)
         .await
         .map_err(|e| e.to_string())?;
-
-    sqlx::query("DELETE FROM share_grants WHERE id = $1")
-        .bind(id)
-        .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
     Ok(())
 }
 
 #[tauri::command]
-async fn revoke_share_link_db(id: String) -> Result<(), String> {
-    use sqlx::postgres::PgPoolOptions;
-
-    let pool = PgPoolOptions::new()
-        .max_connections(2)
-        .connect(&get_database_url())
+async fn revoke_share_link_db(
+    state: State<'_, Arc<Mutex<ServerState>>>,
+    id: String,
+) -> Result<(), String> {
+    let db = get_db(&state).await?;
+    ShareLinks::delete_by_id(id)
+        .exec(&db)
         .await
         .map_err(|e| e.to_string())?;
-
-    sqlx::query("DELETE FROM share_links WHERE id = $1")
-        .bind(id)
-        .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
     Ok(())
 }
 

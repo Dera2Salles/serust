@@ -1,15 +1,17 @@
 use crate::common::error::DomainError;
 use crate::common::permission::PermissionChecker;
 use crate::database::domain::{DbShareGrant, DbShareLink};
+use crate::database::entities::{access_log, users};
 use crate::database::share_usecases::{
     CreateGrantUseCase, CreateLinkUseCase, ListMyGrantsUseCase, ListMyLinksUseCase,
     RevokeGrantUseCase, RevokeLinkUseCase,
 };
 use crate::share::domain::ShareGrant;
 use crate::share::local_repository::ShareRepository;
+use sea_orm::{
+    prelude::*, ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, Set, Statement,
+};
 use std::sync::Arc;
-use sea_orm::{Statement, DatabaseBackend, QueryTrait, IntoActiveModel, Set, TryGetable, EntityTrait, ColumnTrait, ConnectionTrait, prelude::*};
-use crate::database::entities::{users, access_log};
 
 pub struct ShareService {
     repo: Arc<ShareRepository>,
@@ -178,14 +180,20 @@ impl ShareService {
             .collect()
     }
 
-    pub async fn list_my_links(&self, owner_id: uuid::Uuid) -> Result<Vec<DbShareLink>, DomainError> {
+    pub async fn list_my_links(
+        &self,
+        owner_id: uuid::Uuid,
+    ) -> Result<Vec<DbShareLink>, DomainError> {
         self.list_links_usecase
             .execute(owner_id)
             .await
             .map_err(|e| DomainError::Internal(e.to_string()))
     }
 
-    pub async fn list_my_grants(&self, owner_id: uuid::Uuid) -> Result<Vec<DbShareGrant>, DomainError> {
+    pub async fn list_my_grants(
+        &self,
+        owner_id: uuid::Uuid,
+    ) -> Result<Vec<DbShareGrant>, DomainError> {
         self.list_grants_usecase
             .execute(owner_id)
             .await
@@ -258,27 +266,46 @@ impl ShareService {
         .await
         .unwrap_or_default();
 
-        rows.into_iter().map(|r| {
-            ShareGrant {
-                owner: r.try_get::<String>("", "owner_username").unwrap_or_default(),
-                path: r.try_get::<String>("", "storage_path").unwrap_or_default().trim_start_matches('/').to_string(),
-                grantee: grantee_username.to_string(),
-                can_read: r.try_get::<bool>("", "can_read").unwrap_or(false),
-                can_write: r.try_get::<bool>("", "can_write").unwrap_or(false),
-                can_download: true, // Assuming download is tied to read for now
-                remaining_reads: r.try_get::<Option<i64>>("", "reads_remaining").unwrap_or(None).map(|v| v as u64),
-                remaining_writes: None,
-                remaining_downloads: None,
-                can_reshare: false,
-                granted_by: r.try_get::<Option<String>>("", "grantor_username").unwrap_or_else(|_| None).unwrap_or_else(|| r.try_get::<String>("", "owner_username").unwrap_or_default()),
-                expires_at: None,
-            }
-        }).collect()
+        rows.into_iter()
+            .map(|r| {
+                ShareGrant {
+                    owner: r
+                        .try_get::<String>("", "owner_username")
+                        .unwrap_or_default(),
+                    path: r
+                        .try_get::<String>("", "storage_path")
+                        .unwrap_or_default()
+                        .trim_start_matches('/')
+                        .to_string(),
+                    grantee: grantee_username.to_string(),
+                    can_read: r.try_get::<bool>("", "can_read").unwrap_or(false),
+                    can_write: r.try_get::<bool>("", "can_write").unwrap_or(false),
+                    can_download: true, // Assuming download is tied to read for now
+                    remaining_reads: r
+                        .try_get::<Option<i64>>("", "reads_remaining")
+                        .unwrap_or(None)
+                        .map(|v| v as u64),
+                    remaining_writes: None,
+                    remaining_downloads: None,
+                    can_reshare: false,
+                    granted_by: r
+                        .try_get::<Option<String>>("", "grantor_username")
+                        .unwrap_or_else(|_| None)
+                        .unwrap_or_else(|| {
+                            r.try_get::<String>("", "owner_username")
+                                .unwrap_or_default()
+                        }),
+                    expires_at: None,
+                }
+            })
+            .collect()
     }
 
     pub async fn owners_shared_with(&self, grantee_username: &str) -> Vec<String> {
-        let rows = self.db.connection.query_all(
-            Statement::from_sql_and_values(
+        let rows = self
+            .db
+            .connection
+            .query_all(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 r#"SELECT DISTINCT u_owner.username
                  FROM v_effective_permissions p
@@ -287,44 +314,53 @@ impl ShareService {
                  JOIN users u_grantee ON u_grantee.id = p.user_id
                  WHERE u_grantee.username = $1 AND p.source = 'grant' AND p.is_valid = TRUE"#,
                 vec![grantee_username.into()],
-            )
-        )
-        .await
-        .unwrap_or_default();
+            ))
+            .await
+            .unwrap_or_default();
 
-        rows.into_iter().map(|r| {
-            r.try_get_by_index::<String>(0).unwrap_or_default()
-        }).collect()
+        rows.into_iter()
+            .map(|r| r.try_get_by_index::<String>(0).unwrap_or_default())
+            .collect()
     }
 
     pub async fn can_read(&self, actor: &str, owner: &str, owner_rel_path: &str) -> bool {
         if actor == owner {
             return true;
         }
-        let storage_path = if owner_rel_path.starts_with('/') { owner_rel_path.to_string() } else { format!("/{}", owner_rel_path) };
-        
+        let storage_path = if owner_rel_path.starts_with('/') {
+            owner_rel_path.to_string()
+        } else {
+            format!("/{}", owner_rel_path)
+        };
+
         // A path is readable if it is directly shared OR a parent folder is shared.
-        let row = self.db.connection.query_one(
-            Statement::from_sql_and_values(
+        let row = self
+            .db
+            .connection
+            .query_one(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 r#"SELECT 1 FROM v_effective_permissions p
                  JOIN files f_shared ON f_shared.id = p.file_id
                  JOIN users u_owner ON u_owner.id = f_shared.owner_id
                  JOIN users u_actor ON u_actor.id = p.user_id
-                 WHERE u_actor.username = $1 
-                   AND u_owner.username = $2 
-                   AND p.can_read = TRUE 
+                 WHERE u_actor.username = $1
+                   AND u_owner.username = $2
+                   AND p.can_read = TRUE
                    AND p.is_valid = TRUE
                    AND (
-                       f_shared.storage_path = $3 
+                       f_shared.storage_path = $3
                        OR ($3 || '/') LIKE (f_shared.storage_path || '/%')
                    )
                  LIMIT 1"#,
-                vec![actor.into(), owner.into(), storage_path.clone().into(), storage_path.clone().into()],
-            )
-        )
-        .await
-        .unwrap_or_default();
+                vec![
+                    actor.into(),
+                    owner.into(),
+                    storage_path.clone().into(),
+                    storage_path.clone().into(),
+                ],
+            ))
+            .await
+            .unwrap_or_default();
 
         row.is_some()
     }
@@ -333,31 +369,42 @@ impl ShareService {
         if actor == owner {
             return true;
         }
-        let storage_path = if owner_rel_path.starts_with('/') { owner_rel_path.to_string() } else { format!("/{}", owner_rel_path) };
-        
+        let storage_path = if owner_rel_path.starts_with('/') {
+            owner_rel_path.to_string()
+        } else {
+            format!("/{}", owner_rel_path)
+        };
+
         // A path is discoverable if it's readable OR it's a parent of a shared item.
-        let row = self.db.connection.query_one(
-            Statement::from_sql_and_values(
+        let row = self
+            .db
+            .connection
+            .query_one(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 r#"SELECT 1 FROM v_effective_permissions p
                  JOIN files f_shared ON f_shared.id = p.file_id
                  JOIN users u_owner ON u_owner.id = f_shared.owner_id
                  JOIN users u_actor ON u_actor.id = p.user_id
-                 WHERE u_actor.username = $1 
-                   AND u_owner.username = $2 
-                   AND p.can_read = TRUE 
+                 WHERE u_actor.username = $1
+                   AND u_owner.username = $2
+                   AND p.can_read = TRUE
                    AND p.is_valid = TRUE
                    AND (
-                       f_shared.storage_path = $3 
+                       f_shared.storage_path = $3
                        OR ($3 || '/') LIKE (f_shared.storage_path || '/%')
                        OR (f_shared.storage_path || '/') LIKE ($3 || '/%')
                    )
                  LIMIT 1"#,
-                vec![actor.into(), owner.into(), storage_path.clone().into(), storage_path.clone().into(), storage_path.clone().into()],
-            )
-        )
-        .await
-        .unwrap_or_default();
+                vec![
+                    actor.into(),
+                    owner.into(),
+                    storage_path.clone().into(),
+                    storage_path.clone().into(),
+                    storage_path.clone().into(),
+                ],
+            ))
+            .await
+            .unwrap_or_default();
 
         row.is_some()
     }
@@ -366,29 +413,39 @@ impl ShareService {
         if actor == owner {
             return true;
         }
-        let storage_path = if owner_rel_path.starts_with('/') { owner_rel_path.to_string() } else { format!("/{}", owner_rel_path) };
-        
-        let row = self.db.connection.query_one(
-            Statement::from_sql_and_values(
+        let storage_path = if owner_rel_path.starts_with('/') {
+            owner_rel_path.to_string()
+        } else {
+            format!("/{}", owner_rel_path)
+        };
+
+        let row = self
+            .db
+            .connection
+            .query_one(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 r#"SELECT 1 FROM v_effective_permissions p
                  JOIN files f_shared ON f_shared.id = p.file_id
                  JOIN users u_owner ON u_owner.id = f_shared.owner_id
                  JOIN users u_actor ON u_actor.id = p.user_id
-                 WHERE u_actor.username = $1 
-                   AND u_owner.username = $2 
-                   AND p.can_write = TRUE 
+                 WHERE u_actor.username = $1
+                   AND u_owner.username = $2
+                   AND p.can_write = TRUE
                    AND p.is_valid = TRUE
                    AND (
-                       f_shared.storage_path = $3 
+                       f_shared.storage_path = $3
                        OR ($3 || '/') LIKE (f_shared.storage_path || '/%')
                    )
                  LIMIT 1"#,
-                vec![actor.into(), owner.into(), storage_path.clone().into(), storage_path.clone().into()],
-            )
-        )
-        .await
-        .unwrap_or_default();
+                vec![
+                    actor.into(),
+                    owner.into(),
+                    storage_path.clone().into(),
+                    storage_path.clone().into(),
+                ],
+            ))
+            .await
+            .unwrap_or_default();
 
         row.is_some()
     }
@@ -407,7 +464,11 @@ impl ShareService {
             return Ok(());
         }
         // Log access to trigger read counter
-        let storage_path = if owner_rel_path.starts_with('/') { owner_rel_path.to_string() } else { format!("/{}", owner_rel_path) };
+        let storage_path = if owner_rel_path.starts_with('/') {
+            owner_rel_path.to_string()
+        } else {
+            format!("/{}", owner_rel_path)
+        };
         let row = self.db.connection.query_one(
             Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
@@ -424,9 +485,13 @@ impl ShareService {
 
         if let Some(r) = row {
             // use sea_orm::TryGetable; // Already imported at the top
-            let file_id: String = r.try_get::<String>("", "file_id").map_err(|e| DomainError::Internal(e.to_string()))?;
-            let grant_id: Option<String> = r.try_get::<Option<String>>("", "grant_id").map_err(|e| DomainError::Internal(e.to_string()))?;
-            
+            let file_id: String = r
+                .try_get::<String>("", "file_id")
+                .map_err(|e| DomainError::Internal(e.to_string()))?;
+            let grant_id: Option<String> = r
+                .try_get::<Option<String>>("", "grant_id")
+                .map_err(|e| DomainError::Internal(e.to_string()))?;
+
             let actor_model = users::Entity::find()
                 .filter(users::Column::Username.eq(actor))
                 .one(&self.db.connection)
@@ -447,8 +512,10 @@ impl ShareService {
                 bytes_transferred: Set(None),
                 ..Default::default()
             };
-            access_log::Entity::insert(active_model).exec(&self.db.connection).await
-            .map_err(|e| DomainError::Internal(e.to_string()))?;
+            access_log::Entity::insert(active_model)
+                .exec(&self.db.connection)
+                .await
+                .map_err(|e| DomainError::Internal(e.to_string()))?;
         }
 
         Ok(())

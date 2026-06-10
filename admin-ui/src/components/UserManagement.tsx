@@ -40,9 +40,10 @@ export const UserManagement = () => {
     setLoading(true);
     try {
       const data = await invoke<User[]>('get_users_from_db');
+      console.log("Users data received:", data);
       setUsers(data || []);
     } catch (e) {
-      console.error(e);
+      console.error("Failed to fetch users:", e);
     } finally {
       setLoading(false);
     }
@@ -51,10 +52,11 @@ export const UserManagement = () => {
   const fetchDefaultQuota = async () => {
     try {
       const settings = await invoke<any>('get_global_settings');
+      console.log("Global settings for quota:", settings);
       if (settings?.default_storage_quota_gb) {
         setFormData(prev => ({ ...prev, quota_gb: settings.default_storage_quota_gb }));
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error("Failed to fetch settings:", e); }
   };
 
   useEffect(() => { fetchUsers(); fetchDefaultQuota(); }, []);
@@ -69,26 +71,26 @@ export const UserManagement = () => {
         quota: Number(formData.quota_gb) * 1024 * 1024 * 1024,
       });
       setIsCreateOpen(false);
-      setFormData({ username: '', email: '', password: '', quota_gb: 10 });
+      setFormData({ username: '', email: '', password: '', quota_gb: 5 });
       fetchUsers();
-    } catch (e) { alert(e); }
+    } catch (e) { alert("Erreur lors de la création : " + e); }
   };
 
   const handleApprove = async (user: User) => {
     try {
       await invoke('update_user_db', { id: user.id, email: user.email, quota: user.storage_quota_bytes, isActive: true });
       fetchUsers();
-    } catch (e) { alert(e); }
+    } catch (e) { alert("Erreur lors de l'approbation : " + e); }
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm('Supprimer cet utilisateur ?')) return;
-    try { await invoke('delete_user_db', { id }); fetchUsers(); } catch (e) { alert(e); }
+    try { await invoke('delete_user_db', { id }); fetchUsers(); } catch (e) { alert("Erreur lors de la suppression : " + e); }
   };
 
-  const filtered = users.filter(u =>
-    u.username.toLowerCase().includes(query.toLowerCase()) ||
-    u.email.toLowerCase().includes(query.toLowerCase())
+  const filtered = (users || []).filter(u =>
+    (u.username || "").toLowerCase().includes(query.toLowerCase()) ||
+    (u.email || "").toLowerCase().includes(query.toLowerCase())
   );
 
   return (
@@ -98,9 +100,9 @@ export const UserManagement = () => {
       {/* Stats */}
       <div style={{ padding: '0 28px 22px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
         {[
-          { label: 'Total Utilisateurs', value: users.length,                        icon: Users,     bg: 'var(--color-accent-light)',  color: 'var(--color-accent)' },
-          { label: 'Actifs',             value: users.filter(u => u.is_active).length, icon: Check,   bg: 'var(--color-success-bg)',    color: 'var(--color-success)' },
-          { label: 'En attente',         value: users.filter(u => !u.is_active).length, icon: RefreshCw, bg: 'var(--color-warning-bg)', color: 'var(--color-warning)' },
+          { label: 'Total Utilisateurs', value: (users || []).length,                        icon: Users,     bg: 'var(--color-accent-light)',  color: 'var(--color-accent)' },
+          { label: 'Actifs',             value: (users || []).filter(u => u.is_active).length, icon: Check,   bg: 'var(--color-success-bg)',    color: 'var(--color-success)' },
+          { label: 'En attente',         value: (users || []).filter(u => !u.is_active).length, icon: RefreshCw, bg: 'var(--color-warning-bg)', color: 'var(--color-warning)' },
         ].map((s, i) => {
           const Icon = s.icon;
           return (
@@ -173,96 +175,111 @@ export const UserManagement = () => {
               <span style={{ fontSize: 14, fontWeight: 600 }}>Aucun utilisateur trouvé</span>
             </div>
           ) : filtered.map((user, i) => {
-            const avatarStyle = AVATAR_COLORS[i % AVATAR_COLORS.length];
-            const usedPct = Math.min(100, (user.storage_used_bytes / Math.max(user.storage_quota_bytes, 1)) * 100);
-            return (
-              <div key={user.id}>
-                {i > 0 && <div style={{ height: 1, background: 'var(--color-win-stroke)', margin: '0 16px' }} />}
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1.5fr 1.8fr 180px 100px 130px',
-                    padding: '12px 16px',
-                    alignItems: 'center',
-                    transition: 'background 0.1s',
-                    cursor: 'default',
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-accent-subtle)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = '')}
-                >
-                  {/* Name + avatar */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{
-                      width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
-                      background: avatarStyle.bg,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      color: avatarStyle.text,
-                      fontWeight: 700, fontSize: 13,
-                    }}>
-                      {user.username.charAt(0).toUpperCase()}
-                    </div>
-                    <div>
-                      <p style={{ fontSize: 13.5, fontWeight: 600, margin: 0, color: 'var(--color-win-text)' }}>{user.username}</p>
-                      <p style={{ fontSize: 11, color: 'var(--color-win-text3)', margin: 0 }}>
-                        {new Date(user.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
-                      </p>
-                    </div>
-                  </div>
+            try {
+              const avatarStyle = AVATAR_COLORS[i % AVATAR_COLORS.length];
+              const usedBytes = user.storage_used_bytes || 0;
+              const quotaBytes = user.storage_quota_bytes || 1;
+              const usedPct = Math.min(100, (usedBytes / Math.max(quotaBytes, 1)) * 100);
+              
+              let dateStr = "N/A";
+              if (user.created_at) {
+                try {
+                  dateStr = new Date(user.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
+                } catch(de) { console.error("Date error", de); }
+              }
 
-                  {/* Email */}
-                  <span style={{ fontSize: 13, color: 'var(--color-win-text2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {user.email}
-                  </span>
-
-                  {/* Storage bar */}
-                  <div style={{ paddingRight: 16 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <span style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--color-win-text2)' }}>{formatSize(user.storage_used_bytes)}</span>
-                      <span style={{ fontSize: 11, color: 'var(--color-win-text4)' }}>/ {formatSize(user.storage_quota_bytes)}</span>
+              return (
+                <div key={user.id || i}>
+                  {i > 0 && <div style={{ height: 1, background: 'var(--color-win-stroke)', margin: '0 16px' }} />}
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1.5fr 1.8fr 180px 100px 130px',
+                      padding: '12px 16px',
+                      alignItems: 'center',
+                      transition: 'background 0.1s',
+                      cursor: 'default',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-accent-subtle)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = '')}
+                  >
+                    {/* Name + avatar */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{
+                        width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+                        background: avatarStyle.bg,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: avatarStyle.text,
+                        fontWeight: 700, fontSize: 13,
+                      }}>
+                        {(user.username || "?").charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <p style={{ fontSize: 13.5, fontWeight: 600, margin: 0, color: 'var(--color-win-text)' }}>{user.username || "Inconnu"}</p>
+                        <p style={{ fontSize: 11, color: 'var(--color-win-text3)', margin: 0 }}>
+                          {dateStr}
+                        </p>
+                      </div>
                     </div>
-                    <div className="fluent-progress">
-                      <div
-                        className="fluent-progress-fill"
-                        style={{
-                          width: `${usedPct}%`,
-                          background: usedPct > 90 ? 'var(--color-error)' : usedPct > 70 ? 'var(--color-warning)' : 'var(--color-accent)',
-                        }}
-                      />
+
+                    {/* Email */}
+                    <span style={{ fontSize: 13, color: 'var(--color-win-text2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {user.email || "N/A"}
+                    </span>
+
+                    {/* Storage bar */}
+                    <div style={{ paddingRight: 16 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <span style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--color-win-text2)' }}>{formatSize(usedBytes)}</span>
+                        <span style={{ fontSize: 11, color: 'var(--color-win-text4)' }}>/ {formatSize(quotaBytes)}</span>
+                      </div>
+                      <div className="fluent-progress">
+                        <div
+                          className="fluent-progress-fill"
+                          style={{
+                            width: `${usedPct}%`,
+                            background: usedPct > 90 ? 'var(--color-error)' : usedPct > 70 ? 'var(--color-warning)' : 'var(--color-accent)',
+                          }}
+                        />
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Status */}
-                  <span>
-                    <AroChip label={user.is_active ? 'Actif' : 'En attente'} color={user.is_active ? 'green' : 'yellow'} />
-                  </span>
+                    {/* Status */}
+                    <span>
+                      <AroChip label={user.is_active ? 'Actif' : 'En attente'} color={user.is_active ? 'green' : 'yellow'} />
+                    </span>
 
-                  {/* Actions */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {!user.is_active && (
-                      <button
-                        className="fluent-btn fluent-btn-accent"
-                        style={{ padding: '4px 8px', gap: 4, fontSize: 12 }}
-                        onClick={() => handleApprove(user)}
-                        title="Approuver"
-                      >
-                        <Check size={12} />
+                    {/* Actions */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {!user.is_active && (
+                        <button
+                          className="fluent-btn fluent-btn-accent"
+                          style={{ padding: '4px 8px', gap: 4, fontSize: 12 }}
+                          onClick={() => handleApprove(user)}
+                          title="Approuver"
+                        >
+                          <Check size={12} />
+                        </button>
+                      )}
+                      <button className="fluent-btn" style={{ padding: '4px 8px' }} title="Modifier">
+                        <Edit3 size={13} />
                       </button>
-                    )}
-                    <button className="fluent-btn" style={{ padding: '4px 8px' }} title="Modifier">
-                      <Edit3 size={13} />
-                    </button>
-                    <button
-                      className="fluent-btn fluent-btn-danger"
-                      style={{ padding: '4px 8px' }}
-                      onClick={() => handleDelete(user.id)}
-                      title="Supprimer"
-                    >
-                      <Trash2 size={13} />
-                    </button>
+                      <button
+                        className="fluent-btn fluent-btn-danger"
+                        style={{ padding: '4px 8px' }}
+                        onClick={() => handleDelete(user.id)}
+                        title="Supprimer"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
+              );
+            } catch(re) {
+               console.error("Render error for user", user, re);
+               return <div key={i}>Error rendering row</div>;
+            }
           })}
         </div>
       </div>

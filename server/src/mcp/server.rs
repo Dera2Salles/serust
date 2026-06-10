@@ -1,5 +1,5 @@
 use crate::database::analytics_repository::AnalyticsRepository;
-use crate::database::entities::{prelude::*, access_log, read_counters};
+use crate::database::entities::{access_log, read_counters};
 use crate::database::interfaces::{
     IFileDatabaseRepository, IShareDatabaseRepository, IUserRepository,
 };
@@ -9,11 +9,11 @@ use crate::database::{
 };
 use crate::file::service::FileService;
 use crate::mcp::registry::McpRegistry;
-use sea_orm::{Set, EntityTrait, ColumnTrait, QueryFilter};
 use crate::mcp::types::{
     InitializeResult, JsonRpcRequest, JsonRpcResponse, PromptsCapability, ResourcesCapability,
     ServerCapabilities, ServerInfo, ToolsCapability,
 };
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Set};
 use serde_json::{json, Value};
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -113,7 +113,11 @@ async fn handle_http(
                 "username": null
             }
         ]);
-        return Ok(json_response(StatusCode::OK, json!({"status": "ok", "sessions": sessions}), &cors_headers));
+        return Ok(json_response(
+            StatusCode::OK,
+            json!({"status": "ok", "sessions": sessions}),
+            &cors_headers,
+        ));
     }
 
     if method == Method::GET && path == "/api/users/search" {
@@ -140,10 +144,16 @@ async fn handle_http(
         let user_repo = crate::database::user_repository::UserRepository::new(state.db.clone());
         let db_user = user_repo.find_by_username(username).await.unwrap_or(None);
         let user = crate::user::domain::User {
-            id: db_user.as_ref().map(|u| u.id).unwrap_or_else(uuid::Uuid::nil),
+            id: db_user
+                .as_ref()
+                .map(|u| u.id)
+                .unwrap_or_else(uuid::Uuid::nil),
             username: username.to_string(),
             password_hash: String::new(),
-            email: db_user.as_ref().map(|u| u.email.clone()).unwrap_or_default(),
+            email: db_user
+                .as_ref()
+                .map(|u| u.email.clone())
+                .unwrap_or_default(),
             first_name: None,
             last_name: None,
             birth_date: None,
@@ -253,26 +263,26 @@ async fn handle_http(
             ));
         }
 
-        return Ok(match state
-            .auth_service
-            .register(
-                username,
-                email,
-                password,
-                first_name,
-                last_name,
-                birth_date,
-                location,
-            )
-            .await
-        {
-            Ok(_) => json_response(StatusCode::CREATED, json!({ "status": "ok" }), &cors_headers),
-            Err(e) => json_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                json!({ "error": e.to_string() }),
-                &cors_headers,
-            ),
-        });
+        return Ok(
+            match state
+                .auth_service
+                .register(
+                    username, email, password, first_name, last_name, birth_date, location,
+                )
+                .await
+            {
+                Ok(_) => json_response(
+                    StatusCode::CREATED,
+                    json!({ "status": "ok" }),
+                    &cors_headers,
+                ),
+                Err(e) => json_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    json!({ "error": e.to_string() }),
+                    &cors_headers,
+                ),
+            },
+        );
     }
 
     if method == Method::POST && path == "/api/auth/login" {
@@ -309,11 +319,7 @@ async fn handle_http(
                     crate::common::error::DomainError::PendingApproval => StatusCode::FORBIDDEN,
                     _ => StatusCode::UNAUTHORIZED,
                 };
-                json_response(
-                    status,
-                    json!({ "error": e.to_string() }),
-                    &cors_headers,
-                )
+                json_response(status, json!({ "error": e.to_string() }), &cors_headers)
             }
         });
     }
@@ -499,10 +505,12 @@ async fn handle_public_download(
                 bytes_transferred: Set(Some(d.len() as i64)),
                 ..Default::default()
             };
-            let _ = access_log::Entity::insert(active_model).exec(&state.db.connection).await;
+            let _ = access_log::Entity::insert(active_model)
+                .exec(&state.db.connection)
+                .await;
 
             d
-        },
+        }
         Err(e) => {
             return json_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
