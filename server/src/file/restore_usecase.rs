@@ -13,7 +13,6 @@ impl RestoreUseCase {
     }
 
     pub async fn execute(&self, _user: &User, id: uuid::Uuid) -> Result<(), DomainError> {
-        // We restore by ID since it's in the recycle bin and we have its DB ID
         self.restore_db_file
             .execute(id)
             .await

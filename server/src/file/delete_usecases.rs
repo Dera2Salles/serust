@@ -55,7 +55,6 @@ impl DeleteUseCase {
                 .consume_write(&user.username, &owner, &inner)
                 .await?;
             
-            // Determine if it's a directory
             let is_dir = self.file_repo.stat(&owner, &inner).await?.map_or(false, |(_, d)| d);
 
             let res = if is_dir {
@@ -71,7 +70,6 @@ impl DeleteUseCase {
             return res;
         }
 
-        // Check if it exists on disk and if it's a directory
         let stat = self.file_repo.stat(&user.username, &resolved).await?;
         let is_dir = stat.as_ref().map_or(false, |(_, d)| *d);
 
@@ -80,7 +78,6 @@ impl DeleteUseCase {
                 return Err(DomainError::PermissionDenied);
             }
         } else if stat.is_none() {
-            // Check if it exists in DB even if not on disk (could be already soft deleted)
             let storage_path = format!("/{}", resolved);
             if self.find_db_file.execute(user.id, &storage_path).await.map_or(true, |o| o.is_none()) {
                 return Err(DomainError::FileNotFound);
@@ -89,11 +86,9 @@ impl DeleteUseCase {
 
         let storage_path = format!("/{}", resolved);
         
-        // Ensure a DB record exists before soft deleting
         let db_meta = self.find_db_file.execute(user.id, &storage_path).await.ok().flatten();
         
         if db_meta.is_none() && stat.is_some() {
-            // Exists on disk but not in DB, create record
             let new_meta = DbFileMetadata {
                 id: uuid::Uuid::new_v4(),
                 owner_id: user.id,
@@ -119,7 +114,6 @@ impl DeleteUseCase {
                 .map_err(|e| DomainError::Internal(e.to_string()))?;
             Ok(())
         } else {
-            // Not in DB, fallback to physical delete
             if is_dir {
                 self.file_repo.remove_dir(&user.username, &resolved).await
             } else {

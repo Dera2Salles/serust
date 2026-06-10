@@ -50,13 +50,8 @@ impl UploadUseCase {
 
     async fn ensure_db_parents(&self, user: &User, path: &str) -> Result<(), DomainError> {
         let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
-        // If it's a file, we don't want to create a dir record for the filename itself here.
-        // But path passed to this might be the full file path.
-        // Let's assume we want to ensure parents of the path.
         let mut current_path = String::new();
 
-        // We iterate up to len() - 1 if it's a file upload path.
-        // Actually, if it's a file upload, the last segment is the filename.
         let count = segments.len();
         if count <= 1 {
             return Ok(());

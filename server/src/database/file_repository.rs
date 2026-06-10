@@ -195,7 +195,6 @@ impl IFileDatabaseRepository for FileRepository {
             format!("{}/%", old_prefix)
         };
 
-        // Use raw SQL for path prefix update as it involves string manipulation
         self.db.connection.execute(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"UPDATE files 

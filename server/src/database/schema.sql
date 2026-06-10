@@ -103,7 +103,6 @@ CREATE TABLE IF NOT EXISTS read_counters (
     )
 );
 
--- Trigger function for share links read counter
 CREATE OR REPLACE FUNCTION trg_update_read_counters_link_fn()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -128,7 +127,6 @@ CREATE OR REPLACE TRIGGER trg_update_read_counters_link
 AFTER INSERT ON access_log
 FOR EACH ROW EXECUTE FUNCTION trg_update_read_counters_link_fn();
 
--- Trigger function for share grants read counter
 CREATE OR REPLACE FUNCTION trg_update_read_counters_grant_fn()
 RETURNS TRIGGER AS $$
 BEGIN

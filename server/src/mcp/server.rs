@@ -416,7 +416,6 @@ async fn handle_public_download(
         }
     }
 
-    // Password check
     if let Some(ref hash) = link.password_hash {
         let password = extract_query_param(query_params, "password").unwrap_or("");
         if crate::user::service::AuthService::hash_password(password) != *hash {
@@ -428,7 +427,6 @@ async fn handle_public_download(
         }
     }
 
-    // Read counter check
     let read_count_model = read_counters::Entity::find()
         .filter(read_counters::Column::ShareLinkId.eq(link.id.to_string()))
         .one(&state.db.connection)
@@ -492,7 +490,6 @@ async fn handle_public_download(
         .await
     {
         Ok(d) => {
-            // Log the access
             let _ = state.log_access_usecase.execute(&crate::database::domain::DbAccessLog {
                 id: 0,
                 file_id: file_meta.id,

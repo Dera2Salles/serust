@@ -99,7 +99,6 @@ impl FileService {
         let user_path = self.user_path(&user.username);
         let (historical_name, content) = self.git.restore_version(&user_path, &resolved, hash)?;
         
-        // 1. Rename to original filename
         let old_dir = resolved.split('/').collect::<Vec<_>>()[..resolved.split('/').count() - 1].join("/");
         let new_resolved = if old_dir.is_empty() {
             historical_name
@@ -109,7 +108,6 @@ impl FileService {
         
         self.file_repo.rename(&user.username, &resolved, &new_resolved).await?;
         
-        // 2. Write historical content
         let meta = crate::file::domain::FileMetadata::new(&new_resolved, content.len() as u64, &user.username);
         self.file_repo.store(meta, content).await?;
 
@@ -237,7 +235,6 @@ impl FileService {
     }
 
     pub async fn find_db_file(&self, user_id: uuid::Uuid, path: &str) -> Result<Option<crate::database::domain::DbFileMetadata>, DomainError> {
-        // Ensure path starts with / for DB lookup
         let storage_path = if path.starts_with('/') { path.to_string() } else { format!("/{}", path) };
         self.find_file_by_path.execute(user_id, &storage_path).await
             .map_err(|e| DomainError::Internal(e.to_string()))

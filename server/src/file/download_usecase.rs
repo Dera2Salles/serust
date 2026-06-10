@@ -83,7 +83,6 @@ impl DownloadUseCase {
                 return Err(DomainError::PermissionDenied);
             }
 
-            // If it's a shared file, we must use the owner's password hash to decrypt it
             if let Ok(Some(owner_user)) = self.auth.get_user_by_username(&owner).await {
                 password_hash = owner_user.password_hash;
             }

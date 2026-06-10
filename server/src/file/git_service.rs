@@ -63,7 +63,6 @@ impl GitService {
         debug!("Git commit successful: {} for {}", message, rel_path);
 
         if self.bucket.is_some() {
-            // Attempt sync to S3 if bucket is configured
             let _ = self.sync_to_s3(user_path);
         }
 
@@ -169,8 +168,6 @@ impl GitService {
         if !output.status.success() {
             let err = String::from_utf8_lossy(&output.stderr);
             debug!("Git push to S3 failed: {}", err);
-            // We don't necessarily want to fail the whole operation if push fails, 
-            // but we should log it. For now, returning error to be strict.
             return Err(DomainError::Internal(format!("Git push failed: {}", err)));
         }
         Ok(())
@@ -199,7 +196,6 @@ impl GitService {
     pub fn find_path_at_commit(&self, repo: &Repository, commit: &Commit, blob_oid: Oid) -> Result<Option<String>, DomainError> {
         let tree = commit.tree().map_err(|e| DomainError::Internal(e.to_string()))?;
         
-        // Walk the tree to find the blob with the given Oid
         let mut found_path = None;
         tree.walk(git2::TreeWalkMode::PreOrder, |root, entry| {
             if let Some(object) = entry.to_object(repo).ok() {
@@ -235,7 +231,6 @@ impl GitService {
         let object = entry.to_object(&repo).map_err(|e| DomainError::Internal(e.to_string()))?;
         let blob = object.as_blob().ok_or_else(|| DomainError::Internal("Not a blob".into()))?;
 
-        // Find the historical path for this blob
         let historical_path = self.find_path_at_commit(&repo, &commit, blob.id())?
             .unwrap_or_else(|| rel_path.to_string());
         

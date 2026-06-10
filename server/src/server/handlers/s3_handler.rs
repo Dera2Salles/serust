@@ -37,7 +37,6 @@ async fn handle_request(
     shares: Arc<ShareService>,
     logs: Arc<crate::database::log_usecases::LogAccessUseCase>,
 ) -> Result<S3Response, BoxError> {
-    // 1. Authentication
     let user = match authenticate(&req, auth.clone()).await {
         Ok(u) => u,
         Err(_) => {
@@ -61,7 +60,6 @@ async fn handle_request(
 
     let mut rel_path_raw = segments[1..].join("/");
     
-    // Support cross-user profile picture access: GET /arosaina-storage/other_user/.profile_pic.jpg
     if method == "GET" && segments.len() == 3 && segments[2] == ".profile_pic.jpg" {
         let target_username = segments[1];
         if target_username != user.username {
@@ -71,7 +69,6 @@ async fn handle_request(
         }
     }
 
-    // If the first segment matches the current username, strip it to allow bucket/username/path style access
     if segments.len() > 2 && segments[1] == user.username {
         rel_path_raw = segments[2..].join("/");
     } else if segments.len() == 2 && segments[1] == user.username {
@@ -187,7 +184,6 @@ async fn handle_get_object(
 
     match files.download(user, "/", path).await {
         Ok(data) => {
-            // Log access
             if let Ok(Some(meta)) = files.find_db_file_by_path(user.id, path).await {
                 let _ = logs.execute(&crate::database::domain::DbAccessLog {
                     id: 0,
@@ -271,7 +267,6 @@ async fn handle_put_object(
 
     match files.upload(user, "/", path, size, body_bytes.to_vec()).await {
         Ok(_) => {
-            // Log upload
             if let Ok(Some(meta)) = files.find_db_file_by_path(user.id, path).await {
                 let _ = logs.execute(&crate::database::domain::DbAccessLog {
                     id: 0,
@@ -306,7 +301,6 @@ async fn handle_delete_object(
     files: Arc<FileService>,
     logs: Arc<crate::database::log_usecases::LogAccessUseCase>,
 ) -> Result<S3Response, BoxError> {
-    // We need file_id before it's deleted
     let file_meta = files.find_db_file_by_path(user.id, path).await.ok().flatten();
 
     match files.delete(user, "/", path).await {
@@ -360,7 +354,6 @@ async fn handle_list_objects(
             xml.push_str(&format!("  <Name>arosaina-bucket</Name>\n  <Prefix>{}</Prefix>\n", path_prefix));
             
             for (name, is_dir) in entries {
-                // Determine permissions for the individual item
                 let mut can_read = true;
                 let mut can_write = true;
                 let mut can_download = true;
@@ -372,7 +365,6 @@ async fn handle_list_objects(
                     format!("{}/{}", path, name)
                 };
 
-                // Check permissions if shared
                 let grants = shares.list_incoming(&user.username).await;
                 for grant in grants {
                     let share_path = if grant.path.starts_with('/') { &grant.path[1..] } else { &grant.path };
@@ -388,7 +380,6 @@ async fn handle_list_objects(
                             break;
                         }
                     } else if item_path.starts_with("shared/") && item_path.split('/').nth(1).unwrap_or("") == grant.owner {
-                         // Virtual owner directory under /shared
                          can_read = true; 
                     }
                 }

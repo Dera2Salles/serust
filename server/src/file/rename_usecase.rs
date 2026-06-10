@@ -59,7 +59,6 @@ impl RenameUseCase {
             return Err(DomainError::PermissionDenied);
         }
 
-        // 1. Determine if target is a directory
         let stat = self.file_repo.stat(&user.username, &old_resolved).await?;
         let is_dir = stat.as_ref().map_or(false, |(_, d)| *d);
 
@@ -75,7 +74,6 @@ impl RenameUseCase {
             return Err(DomainError::FileNotFound);
         }
 
-        // 2. Perform physical rename
         self.file_repo
             .rename(&user.username, &old_resolved, &new_resolved)
             .await?;
@@ -84,7 +82,6 @@ impl RenameUseCase {
         let _ = self.git_service.commit_file(&user_path, &old_resolved, &format!("Renamed file (old): {}", old_name));
         let _ = self.git_service.commit_file(&user_path, &new_resolved, &format!("Renamed file (new): {}", new_name));
 
-        // 3. Update database records
         let old_storage_path = format!("/{}", old_resolved);
         let new_storage_path = format!("/{}", new_resolved);
         let new_filename = new_resolved
@@ -96,18 +93,15 @@ impl RenameUseCase {
         let db_meta = self.find_db_file.execute(user.id, &old_storage_path).await.ok().flatten();
 
         if let Some(meta) = db_meta {
-            // Update the record itself
             let _ = self
                 .rename_db_file
                 .execute(meta.id, &new_storage_path, &new_filename)
                 .await;
 
             if is_dir {
-                // Recursively update all children in DB
                 let _ = self.update_path_prefix.execute(user.id, &old_storage_path, &new_storage_path).await;
             }
         } else if stat.is_some() {
-            // Missing DB record but exists on disk, create it now
             let new_meta = DbFileMetadata {
                 id: uuid::Uuid::new_v4(),
                 owner_id: user.id,

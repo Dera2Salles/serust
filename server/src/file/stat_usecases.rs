@@ -87,10 +87,6 @@ impl StatUseCase {
             };
 
             let owner_id = if let Some((_owner, _)) = PermissionChecker::parse_shared(&resolved) {
-                // For shared files, we need the owner's ID. 
-                // But v_effective_permissions view handles this better usually.
-                // For now, let's just use user.id if it's not shared, or skip if shared for simplicity
-                // since StatUseCase currently assumes finding in current user's DB entries if not shared.
                 None
             } else {
                 Some(user.id)

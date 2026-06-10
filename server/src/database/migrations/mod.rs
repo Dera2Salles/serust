@@ -1,4 +1,4 @@
-pub mod m0000001_create_table; // Update this with the actual migration file name
+pub mod m0000001_create_table; 
 
 use sea_orm_migration::prelude::*;
 

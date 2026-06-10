@@ -280,7 +280,7 @@ impl ShareService {
                     grantee: grantee_username.to_string(),
                     can_read: r.try_get::<bool>("", "can_read").unwrap_or(false),
                     can_write: r.try_get::<bool>("", "can_write").unwrap_or(false),
-                    can_download: true, // Assuming download is tied to read for now
+                    can_download: true, 
                     remaining_reads: r
                         .try_get::<Option<i64>>("", "reads_remaining")
                         .unwrap_or(None)
@@ -333,7 +333,6 @@ impl ShareService {
             format!("/{}", owner_rel_path)
         };
 
-        // A path is readable if it is directly shared OR a parent folder is shared.
         let row = self
             .db
             .connection
@@ -375,7 +374,6 @@ impl ShareService {
             format!("/{}", owner_rel_path)
         };
 
-        // A path is discoverable if it's readable OR it's a parent of a shared item.
         let row = self
             .db
             .connection
@@ -463,7 +461,6 @@ impl ShareService {
         if actor == owner {
             return Ok(());
         }
-        // Log access to trigger read counter
         let storage_path = if owner_rel_path.starts_with('/') {
             owner_rel_path.to_string()
         } else {
@@ -484,7 +481,6 @@ impl ShareService {
         .map_err(|e| DomainError::Internal(e.to_string()))?;
 
         if let Some(r) = row {
-            // use sea_orm::TryGetable; // Already imported at the top
             let file_id: String = r
                 .try_get::<String>("", "file_id")
                 .map_err(|e| DomainError::Internal(e.to_string()))?;
@@ -544,7 +540,6 @@ impl ShareService {
         if actor == owner {
             return true;
         }
-        // Simplified for now, could also check DB
         false
     }
 }

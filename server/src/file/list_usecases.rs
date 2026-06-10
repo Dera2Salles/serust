@@ -36,7 +36,6 @@ impl ListUseCase {
     ) -> Result<Vec<(String, bool)>, DomainError> {
         let mut result_map: std::collections::HashMap<String, bool> = std::collections::HashMap::new();
 
-        // 1. If this directory itself is accessible, list its actual contents from disk
         if self.shares.can_read(&user.username, owner, inner_dir).await {
             if let Ok(disk_entries) = self.file_repo.list_entries(owner, inner_dir).await {
                 for (name, is_dir) in disk_entries {
@@ -45,8 +44,6 @@ impl ListUseCase {
             }
         }
 
-        // 2. Also include explicitly shared items that might be deeper but whose immediate 
-        // parent is the current directory (even if the current directory isn't shared).
         let grants = self.shares.list_incoming(&user.username).await;
         let prefix = if inner_dir.is_empty() {
             "".to_string()
@@ -119,23 +116,19 @@ impl ListUseCase {
             return Ok(children);
         }
 
-        // 1. List everything from disk
         let disk_entries = self.file_repo.list_entries(&user.username, &resolved).await?;
         
-        // 2. Get metadata from DB for this parent path to check for deleted files
         let db_parent_path = format!("/{}", resolved).trim_end_matches('/').to_string();
         let db_entries = self.list_db_files.execute(user.id, &db_parent_path).await.unwrap_or_default();
         
         let mut filtered = Vec::new();
         for (name, is_dir) in disk_entries {
-            // Check if this specific entry is marked as deleted in DB
             let is_deleted = db_entries.iter().any(|meta| meta.filename == name && meta.is_deleted);
             if !is_deleted {
                 filtered.push((name, is_dir));
             }
         }
 
-        // 3. Add virtual folders if at root
         if resolved.is_empty() {
             if !filtered.iter().any(|(n, is_dir)| n == "shared" && *is_dir) {
                 filtered.push(("shared".to_string(), true));

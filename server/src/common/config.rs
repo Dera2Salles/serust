@@ -36,7 +36,6 @@ pub fn load_config() -> GlobalSettings {
         }
     }
     
-    // If not found or invalid, try parent dir (for when running from admin-ui context)
     let path_parent = "../global_settings.json";
     if let Ok(data) = fs::read_to_string(path_parent) {
         if let Ok(config) = serde_json::from_str(&data) {
