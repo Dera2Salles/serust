@@ -1,6 +1,6 @@
 [workspace]
 members = [
     "server",
-    "admin-ui/src-tauri",
+    "admin-ui/src-tauri", "admin-tui",
 ]
 resolver = "2"

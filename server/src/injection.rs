@@ -39,6 +39,7 @@ pub struct Services {
     pub auth_service: Arc<AuthService>,
     pub file_service: Arc<FileService>,
     pub share_service: Arc<ShareService>,
+    pub log_access_usecase: Arc<LogAccessUseCase>,
     pub db: Database,
 }
 
@@ -360,6 +361,7 @@ pub async fn setup_injection() -> Result<Services> {
         auth_service,
         file_service,
         share_service,
+        log_access_usecase,
         db,
     })
 }

@@ -35,6 +35,7 @@ pub async fn run_server() -> anyhow::Result<()> {
     let auth_service = services.auth_service;
     let share_service = services.share_service;
     let file_service = services.file_service;
+    let log_access_usecase = services.log_access_usecase;
     let db = services.db;
     
     let settings = crate::common::config::load_config();
@@ -50,6 +51,7 @@ pub async fn run_server() -> anyhow::Result<()> {
         registry: Arc::clone(&mcp_registry),
         file_service: Arc::clone(&file_service),
         auth_service: Arc::clone(&auth_service),
+        log_access_usecase: Arc::clone(&log_access_usecase),
         db: db.clone(),
     });
     
@@ -99,6 +101,7 @@ pub async fn run_server() -> anyhow::Result<()> {
     let s3_auth = Arc::clone(&auth_service);
     let s3_files = Arc::clone(&file_service);
     let s3_shares = Arc::clone(&share_service);
+    let s3_logs = Arc::clone(&log_access_usecase);
     let s3_addr_str = format!("0.0.0.0:{}", settings.s3_port);
     let addr: std::net::SocketAddr = s3_addr_str.parse().unwrap();
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -109,6 +112,7 @@ pub async fn run_server() -> anyhow::Result<()> {
             let auth = Arc::clone(&s3_auth);
             let files = Arc::clone(&s3_files);
             let shares = Arc::clone(&s3_shares);
+            let logs = Arc::clone(&s3_logs);
             tokio::task::spawn(async move {
                 if let Err(err) = hyper::server::conn::http1::Builder::new()
                     .serve_connection(
@@ -119,6 +123,7 @@ pub async fn run_server() -> anyhow::Result<()> {
                                 Arc::clone(&auth),
                                 Arc::clone(&files),
                                 Arc::clone(&shares),
+                                Arc::clone(&logs),
                             )
                         }),
                     )

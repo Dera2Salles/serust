@@ -21,9 +21,9 @@ use tracing::{error, info};
 
 pub struct McpServerState {
     pub registry: Arc<McpRegistry>,
-    #[allow(dead_code)]
     pub file_service: Arc<FileService>,
     pub auth_service: Arc<crate::user::service::AuthService>,
+    pub log_access_usecase: Arc<crate::database::log_usecases::LogAccessUseCase>,
     pub db: Database,
 }
 
@@ -492,22 +492,19 @@ async fn handle_public_download(
         .await
     {
         Ok(d) => {
-            // Log the access to trigger read counter update
-            let active_model = access_log::ActiveModel {
-                file_id: Set(link.file_id.to_string()),
-                accessed_by: Set(None),
-                share_link_id: Set(Some(link.id.to_string())),
-                grant_id: Set(None),
-                action: Set(Some("read".to_string())),
-                accessed_at: Set(chrono::Utc::now().into()),
-                ip_address: Set(None),
-                user_agent: Set(None),
-                bytes_transferred: Set(Some(d.len() as i64)),
-                ..Default::default()
-            };
-            let _ = access_log::Entity::insert(active_model)
-                .exec(&state.db.connection)
-                .await;
+            // Log the access
+            let _ = state.log_access_usecase.execute(&crate::database::domain::DbAccessLog {
+                id: 0,
+                file_id: file_meta.id,
+                accessed_by: None,
+                share_link_id: Some(link.id),
+                grant_id: None,
+                action: "read".into(),
+                accessed_at: chrono::Utc::now(),
+                ip_address: None,
+                user_agent: None,
+                bytes_transferred: Some(d.len() as i64),
+            }).await;
 
             d
         }

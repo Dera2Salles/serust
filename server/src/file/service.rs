@@ -197,6 +197,22 @@ impl FileService {
         self.stat.execute(user, cwd, target).await
     }
 
+    pub async fn find_db_file_by_path(
+        &self,
+        user_id: uuid::Uuid,
+        path: &str,
+    ) -> Result<Option<crate::database::domain::DbFileMetadata>, DomainError> {
+        let storage_path = if path.starts_with('/') {
+            path.to_string()
+        } else {
+            format!("/{}", path)
+        };
+        self.find_file_by_path
+            .execute(user_id, &storage_path)
+            .await
+            .map_err(|e| DomainError::Internal(e.to_string()))
+    }
+
     pub async fn rename(
         &self,
         user: &User,

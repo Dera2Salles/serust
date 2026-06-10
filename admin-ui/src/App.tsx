@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AdminDashboard } from './components/AdminDashboard';
 import { UserManagement } from './components/UserManagement';
 import { ServerControl } from './components/ServerControl';
@@ -6,16 +6,45 @@ import { SystemLogs } from './components/SystemLogs';
 import { ActiveSessions } from './components/ActiveSessions';
 import { ShareManagement } from './components/ShareManagement';
 import { GlobalSettings } from './components/GlobalSettings';
+import { Login } from './components/Login';
 import {
   LayoutDashboard, Users, Settings, Activity,
   Share2, ScrollText, Cpu, ChevronLeft, ChevronRight,
-  Bell, Search
+  LogOut
 } from 'lucide-react';
 import { cn } from './components/OneUI';
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [collapsed, setCollapsed] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
+  useEffect(() => {
+    const savedUser = localStorage.getItem('admin_user');
+    if (savedUser) {
+      setUser(JSON.parse(savedUser));
+    }
+    setAuthLoading(false);
+  }, []);
+
+  const handleLoginSuccess = (userData: any) => {
+    setUser(userData);
+    localStorage.setItem('admin_user', JSON.stringify(userData));
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    localStorage.removeItem('admin_user');
+    setShowLogoutConfirm(false);
+  };
+
+  if (authLoading) return null;
+
+  if (!user) {
+    return <Login onLoginSuccess={handleLoginSuccess} />;
+  }
 
   const tabs = [
     { id: 'dashboard', label: 'Dashboard',    icon: LayoutDashboard, group: 'main' },
@@ -66,15 +95,17 @@ function App() {
             justifyContent: collapsed ? 'center' : 'flex-start',
           }}
         >
-          {/* Logo mark — bleu carré arrondi */}
-          <div style={{
-            width: 32, height: 32,
-            borderRadius: 8,
-            background: 'var(--color-accent)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexShrink: 0,
-            color: '#fff', fontWeight: 800, fontSize: 15, letterSpacing: '-0.5px',
-          }}>K</div>
+          {/* Logo mark — image logo.png */}
+          <img 
+            src="/logo.png" 
+            alt="Logo" 
+            style={{
+              width: 32, height: 32,
+              borderRadius: 8,
+              objectFit: 'contain',
+              flexShrink: 0,
+            }} 
+          />
           {!collapsed && (
             <div>
               <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-win-text)', margin: 0, lineHeight: 1.2 }}>Kajy Admin</p>
@@ -143,11 +174,22 @@ function App() {
                 background: 'var(--color-accent)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 color: '#fff', fontWeight: 700, fontSize: 13,
-              }}>A</div>
-              <div style={{ minWidth: 0 }}>
-                <p style={{ fontSize: 13, fontWeight: 600, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Admin User</p>
+              }}>
+                {(user?.username || "A").charAt(0).toUpperCase()}
+              </div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <p style={{ fontSize: 13, fontWeight: 600, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {user?.username || "Admin User"}
+                </p>
                 <p style={{ fontSize: 11, color: 'var(--color-win-text3)', margin: 0 }}>Administrateur</p>
               </div>
+              <button 
+                onClick={handleLogout}
+                className="hover:text-[--color-error] transition-colors"
+                title="Déconnexion"
+              >
+                <LogOut size={16} />
+              </button>
             </div>
           )}
         </div>
@@ -174,39 +216,6 @@ function App() {
             </p>
           </div>
 
-          {/* Search */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            background: 'var(--color-win-bg)',
-            border: '1px solid var(--color-win-stroke)',
-            borderRadius: 8,
-            padding: '7px 12px',
-            width: 220,
-          }}>
-            <Search size={14} style={{ color: 'var(--color-win-text3)', flexShrink: 0 }} />
-            <input
-              style={{
-                border: 'none', background: 'transparent', outline: 'none',
-                fontSize: 13, color: 'var(--color-win-text)', flex: 1, fontFamily: 'inherit',
-              }}
-              placeholder="Rechercher..."
-            />
-          </div>
-
-          {/* Notification */}
-          <button
-            className="fluent-btn"
-            style={{ padding: '7px 10px', boxShadow: 'none', border: '1px solid var(--color-win-stroke)', position: 'relative' }}
-          >
-            <Bell size={16} style={{ color: 'var(--color-win-text2)' }} />
-            <span style={{
-              position: 'absolute', top: 6, right: 6,
-              width: 7, height: 7, borderRadius: '50%',
-              background: 'var(--color-accent)',
-              border: '1.5px solid white',
-            }} />
-          </button>
-
           {/* Avatar */}
           <div style={{
             width: 34, height: 34, borderRadius: '50%',
@@ -214,7 +223,9 @@ function App() {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer',
             border: '2px solid var(--color-accent-bg)',
-          }}>A</div>
+          }} onClick={() => setShowLogoutConfirm(true)} title="Cliquer pour se déconnecter">
+            {(user?.username || "A").charAt(0).toUpperCase()}
+          </div>
         </header>
 
         {/* Content */}
@@ -228,6 +239,37 @@ function App() {
           {activeTab === 'settings'   && <GlobalSettings />}
         </main>
       </div>
+
+      {/* ── Logout Confirmation Modal ── */}
+      {showLogoutConfirm && (
+        <div className="fluent-dialog-overlay" onClick={() => setShowLogoutConfirm(false)}>
+          <div className="fluent-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: 400 }}>
+            <div style={{ marginBottom: 20 }}>
+              <p className="fluent-dialog-title" style={{ margin: 0, fontSize: 20 }}>Se déconnecter ?</p>
+              <p style={{ fontSize: 14, color: 'var(--color-win-text3)', marginTop: 8 }}>
+                Voulez-vous vraiment mettre fin à votre session d'administration ?
+              </p>
+            </div>
+            
+            <div className="flex justify-end gap-3 pt-2">
+              <button 
+                className="fluent-btn" 
+                style={{ minWidth: 100 }}
+                onClick={() => setShowLogoutConfirm(false)}
+              >
+                Annuler
+              </button>
+              <button 
+                className="fluent-btn fluent-btn-danger" 
+                style={{ minWidth: 100 }}
+                onClick={handleLogout}
+              >
+                Déconnexion
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

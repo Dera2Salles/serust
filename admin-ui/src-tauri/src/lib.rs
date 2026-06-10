@@ -325,6 +325,89 @@ async fn revoke_share_link_db(
 }
 
 #[tauri::command]
+async fn login_admin_db(
+    state: State<'_, Arc<Mutex<ServerState>>>,
+    email: String,
+    password_raw: String,
+) -> Result<Value, String> {
+    use sha2::{Digest, Sha256};
+    let db = get_db(&state).await?;
+
+    let mut hasher = Sha256::new();
+    hasher.update(password_raw.as_bytes());
+    let password_hash = hex::encode(hasher.finalize());
+
+    // 1. Find user by email and password
+    let user = users::Entity::find()
+        .filter(users::Column::Email.eq(email))
+        .filter(users::Column::PasswordHash.eq(password_hash))
+        .one(&db)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if let Some(u) = user {
+        // 2. Check if user is an admin
+        let is_admin = Admins::find_by_id(u.id.clone())
+            .one(&db)
+            .await
+            .map_err(|e| e.to_string())?
+            .is_some();
+
+        if !is_admin {
+            return Err("Accès refusé : vous n'êtes pas administrateur".into());
+        }
+
+        if !u.is_active {
+            return Err("Compte désactivé ou en attente d'approbation".into());
+        }
+
+        Ok(serde_json::json!({
+            "id": u.id,
+            "username": u.username,
+            "email": u.email,
+        }))
+    } else {
+        Err("Identifiants invalides".into())
+    }
+}
+
+#[tauri::command]
+async fn get_activity_logs_db(
+    state: State<'_, Arc<Mutex<ServerState>>>,
+) -> Result<Vec<Value>, String> {
+    let db = get_db(&state).await?;
+
+    let logs = db.query_all(sea_orm::Statement::from_string(
+        sea_orm::DatabaseBackend::Postgres,
+        "SELECT al.id, u.username, f.filename, al.action, al.accessed_at, al.ip_address, al.bytes_transferred \
+         FROM access_log al \
+         LEFT JOIN users u ON al.accessed_by = u.id \
+         JOIN files f ON al.file_id = f.id \
+         ORDER BY al.accessed_at DESC \
+         LIMIT 100".to_string(),
+    ))
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut list = Vec::new();
+    for row in logs {
+        let accessed_at: chrono::DateTime<chrono::FixedOffset> =
+            row.try_get("", "accessed_at").map_err(|e| e.to_string())?;
+        list.push(serde_json::json!({
+            "id": row.try_get::<i64>("", "id").map_err(|e| e.to_string())?,
+            "username": row.try_get::<Option<String>>("", "username").unwrap_or(None),
+            "filename": row.try_get::<String>("", "filename").map_err(|e| e.to_string())?,
+            "action": row.try_get::<String>("", "action").map_err(|e| e.to_string())?,
+            "accessed_at": accessed_at.to_rfc3339(),
+            "ip_address": row.try_get::<Option<String>>("", "ip_address").unwrap_or(None),
+            "bytes_transferred": row.try_get::<Option<i64>>("", "bytes_transferred").unwrap_or(None),
+        }));
+    }
+
+    Ok(list)
+}
+
+#[tauri::command]
 fn get_global_settings() -> Result<GlobalSettings, String> {
     let path = "../../global_settings.json";
     if !std::path::Path::new(path).exists() {
@@ -375,6 +458,8 @@ pub fn run() {
             get_all_shares_db,
             revoke_share_grant_db,
             revoke_share_link_db,
+            get_activity_logs_db,
+            login_admin_db,
             get_global_settings,
             save_global_settings
         ])

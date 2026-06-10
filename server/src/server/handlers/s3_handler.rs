@@ -17,8 +17,9 @@ pub async fn serve_s3(
     auth: Arc<AuthService>,
     files: Arc<FileService>,
     shares: Arc<ShareService>,
+    logs: Arc<crate::database::log_usecases::LogAccessUseCase>,
 ) -> Result<S3Response, Infallible> {
-    match handle_request(req, auth, files, shares).await {
+    match handle_request(req, auth, files, shares, logs).await {
         Ok(response) => Ok(response),
         Err(e) => {
             error!("S3 API error: {:?}", e);
@@ -34,6 +35,7 @@ async fn handle_request(
     auth: Arc<AuthService>,
     files: Arc<FileService>,
     shares: Arc<ShareService>,
+    logs: Arc<crate::database::log_usecases::LogAccessUseCase>,
 ) -> Result<S3Response, BoxError> {
     // 1. Authentication
     let user = match authenticate(&req, auth.clone()).await {
@@ -64,7 +66,7 @@ async fn handle_request(
         let target_username = segments[1];
         if target_username != user.username {
             if let Ok(Some(other_user)) = auth.get_user_by_username(target_username).await {
-                return handle_get_object(&req, &other_user, ".profile_pic.jpg", files).await;
+                return handle_get_object(&req, &other_user, ".profile_pic.jpg", files, logs.clone()).await;
             }
         }
     }
@@ -99,7 +101,7 @@ async fn handle_request(
                     return handle_git_diff(&user, &rel_path, hash, files).await;
                 }
             }
-            handle_get_object(&req, &user, &rel_path, files).await
+            handle_get_object(&req, &user, &rel_path, files, logs).await
         }
         "POST" => {
             if let Some(query) = req.uri().query() {
@@ -134,8 +136,8 @@ async fn handle_request(
             *res.status_mut() = StatusCode::METHOD_NOT_ALLOWED;
             Ok(res)
         }
-        "PUT" => handle_put_object(req, &user, &rel_path, is_dir_hint, files).await,
-        "DELETE" => handle_delete_object(&user, &rel_path, files).await,
+        "PUT" => handle_put_object(req, &user, &rel_path, is_dir_hint, files, logs).await,
+        "DELETE" => handle_delete_object(&user, &rel_path, files, logs).await,
         _ => {
             let mut res = Response::new(Full::new(Bytes::from("Method Not Allowed")));
             *res.status_mut() = StatusCode::METHOD_NOT_ALLOWED;
@@ -172,6 +174,7 @@ async fn handle_get_object(
     user: &crate::user::domain::User,
     path: &str,
     files: Arc<FileService>,
+    logs: Arc<crate::database::log_usecases::LogAccessUseCase>,
 ) -> Result<S3Response, BoxError> {
     if req.uri().query().map(|q| q.contains("presign=true")).unwrap_or(false) {
         if let Ok(Some(url)) = files.get_presigned_url(user, "/", path).await {
@@ -184,6 +187,22 @@ async fn handle_get_object(
 
     match files.download(user, "/", path).await {
         Ok(data) => {
+            // Log access
+            if let Ok(Some(meta)) = files.find_db_file_by_path(user.id, path).await {
+                let _ = logs.execute(&crate::database::domain::DbAccessLog {
+                    id: 0,
+                    file_id: meta.id,
+                    accessed_by: Some(user.id),
+                    share_link_id: None,
+                    grant_id: None,
+                    action: "read".into(),
+                    accessed_at: chrono::Utc::now(),
+                    ip_address: None,
+                    user_agent: None,
+                    bytes_transferred: Some(data.len() as i64),
+                }).await;
+            }
+
             let mut res = Response::new(Full::new(Bytes::from(data)));
             res.headers_mut().insert(header::CONTENT_TYPE, "application/octet-stream".parse()?);
             Ok(res)
@@ -229,6 +248,7 @@ async fn handle_put_object(
     path: &str,
     is_dir: bool,
     files: Arc<FileService>,
+    logs: Arc<crate::database::log_usecases::LogAccessUseCase>,
 ) -> Result<S3Response, BoxError> {
     if is_dir {
         match files.mkdir(user, "/", path).await {
@@ -251,6 +271,22 @@ async fn handle_put_object(
 
     match files.upload(user, "/", path, size, body_bytes.to_vec()).await {
         Ok(_) => {
+            // Log upload
+            if let Ok(Some(meta)) = files.find_db_file_by_path(user.id, path).await {
+                let _ = logs.execute(&crate::database::domain::DbAccessLog {
+                    id: 0,
+                    file_id: meta.id,
+                    accessed_by: Some(user.id),
+                    share_link_id: None,
+                    grant_id: None,
+                    action: "upload".into(),
+                    accessed_at: chrono::Utc::now(),
+                    ip_address: None,
+                    user_agent: None,
+                    bytes_transferred: Some(size as i64),
+                }).await;
+            }
+
             let mut res = Response::new(Full::new(Bytes::new()));
             *res.status_mut() = StatusCode::OK;
             Ok(res)
@@ -268,9 +304,28 @@ async fn handle_delete_object(
     user: &crate::user::domain::User,
     path: &str,
     files: Arc<FileService>,
+    logs: Arc<crate::database::log_usecases::LogAccessUseCase>,
 ) -> Result<S3Response, BoxError> {
+    // We need file_id before it's deleted
+    let file_meta = files.find_db_file_by_path(user.id, path).await.ok().flatten();
+
     match files.delete(user, "/", path).await {
         Ok(_) => {
+            if let Some(meta) = file_meta {
+                let _ = logs.execute(&crate::database::domain::DbAccessLog {
+                    id: 0,
+                    file_id: meta.id,
+                    accessed_by: Some(user.id),
+                    share_link_id: None,
+                    grant_id: None,
+                    action: "delete".into(),
+                    accessed_at: chrono::Utc::now(),
+                    ip_address: None,
+                    user_agent: None,
+                    bytes_transferred: None,
+                }).await;
+            }
+
             let mut res = Response::new(Full::new(Bytes::new()));
             *res.status_mut() = StatusCode::NO_CONTENT;
             Ok(res)
