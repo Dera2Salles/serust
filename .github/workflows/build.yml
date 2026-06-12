@@ -12,11 +12,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -25,7 +20,8 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install dependencies
+      - name: Install frontend dependencies
+        working-directory: admin-ui
         run: bun install
 
       - name: Build Tauri app
@@ -33,6 +29,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          projectPath: admin-ui
           tagName: v__VERSION__
           releaseName: "Kajy Admin v__VERSION__"
           releaseDraft: true
