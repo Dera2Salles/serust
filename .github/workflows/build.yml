@@ -5,10 +5,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write  # ← nécessaire pour créer des releases
+
 jobs:
   build-windows:
     runs-on: windows-latest
-
     steps:
       - uses: actions/checkout@v4
 
@@ -34,3 +36,4 @@ jobs:
           releaseName: "Kajy Admin v__VERSION__"
           releaseDraft: true
           prerelease: false
+          uploadArtifacts: true
