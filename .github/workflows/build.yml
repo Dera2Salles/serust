@@ -1,4 +1,4 @@
-name: Build Kajy Admin
+name: Build and Release
 
 on:
   push:
@@ -6,13 +6,37 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write  # ← nécessaire pour créer des releases
+  contents: write
 
 jobs:
-  build-windows:
+  build-server:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build server
+        working-directory: server
+        run: cargo build --release
+
+      # Correction ici : on cible directement le dossier de sortie ou le binaire exact
+      - name: Upload server artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kajy-server
+          path: server/target/release/server.exe # Remplacez "server.exe" par le nom réel de votre exécutable
+
+  build-client:
+    needs: build-server
+    runs-on: windows-latest
+    outputs:
+      tauri_version: ${{ steps.tauri.outputs.version }} # On sauvegarde la version pour le job suivant
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -27,13 +51,35 @@ jobs:
         run: bun install
 
       - name: Build Tauri app
+        id: tauri # ID ajouté pour récupérer les outputs
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: admin-ui
-          tagName: v__VERSION__
+          tagName: v__VERSION__ # Tauri remplacera automatiquement __VERSION__ par celle du package.json
           releaseName: "Kajy Admin v__VERSION__"
           releaseDraft: true
           prerelease: false
-          uploadArtifacts: true
+
+  upload-server-to-release:
+    needs:
+      - build-client
+      - build-server
+    runs-on: windows-latest
+    steps:
+      - name: Download server artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: kajy-server
+          path: server-release
+
+      - name: Upload server executable to release
+        uses: softprops/action-gh-release@v2
+        with:
+          # On utilise ici la vraie version dynamique récupérée du job Tauri !
+          tag_name: v${{ needs.build-client.outputs.tauri_version }}
+          files: server-release/server.exe
+          draft: true # Pour correspondre au draft créé par Tauri
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
