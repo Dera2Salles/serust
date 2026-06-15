@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Header, AroChip, cn } from './OneUI';
-import { Activity, Clock, Globe, Terminal, ZapOff } from 'lucide-react';
+import { Activity, Clock, Globe, Terminal, ZapOff, User } from 'lucide-react';
 
 interface Session {
   id: string;
@@ -56,10 +56,12 @@ export const ActiveSessions = () => {
             <div key={i} className="fluent-card flex items-center justify-between group transition-all py-8 bg-white shadow-sm border border-[--color-win-stroke]/50">
               <div className="flex items-center gap-7">
                 <div className={cn(
-                  "w-16 h-16 rounded-lg flex items-center justify-center font-semibold text-2xl shadow-lg transition-transform group-hover:scale-105",
-                  session.username ? "bg-[--color-accent] text-white shadow-blue/20" : "bg-[--color-win-nav] text-[--color-win-text3] border border-[--color-win-stroke]"
+                  "w-14 h-14 rounded-xl flex items-center justify-center transition-all duration-300",
+                  session.username 
+                    ? "bg-[--color-accent] text-white" 
+                    : "bg-[--color-win-nav] text-[--color-win-text3] border border-[--color-win-stroke]"
                 )}>
-                  {session.username ? session.username.charAt(0).toUpperCase() : <Globe size={28} className="opacity-40" />}
+                  {session.username ? <User size={28} /> : <Globe size={28} className="opacity-40" />}
                 </div>
                 <div>
                   <div className="flex items-center gap-3 mb-2">
