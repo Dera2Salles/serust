@@ -195,3 +195,21 @@ CREATE OR REPLACE VIEW v_effective_permissions AS
         l.id AS link_id
     FROM share_links l
     LEFT JOIN read_counters rc ON rc.share_link_id = l.id;
+
+CREATE TABLE IF NOT EXISTS ai_chats (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS ai_messages (
+    id TEXT PRIMARY KEY,
+    chat_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    text TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    FOREIGN KEY(chat_id) REFERENCES ai_chats(id) ON DELETE CASCADE
+);

@@ -5,4 +5,6 @@ pub mod share_links;
 pub mod share_grants;
 pub mod access_log;
 pub mod read_counters;
+pub mod ai_chats;
+pub mod ai_messages;
 pub mod prelude;

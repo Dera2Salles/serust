@@ -5,3 +5,5 @@ pub use super::share_links::Entity as ShareLinks;
 pub use super::share_grants::Entity as ShareGrants;
 pub use super::access_log::Entity as AccessLog;
 pub use super::read_counters::Entity as ReadCounters;
+pub use super::ai_chats::Entity as AiChats;
+pub use super::ai_messages::Entity as AiMessages;
