@@ -22,7 +22,7 @@ function App() {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('admin_user');
+    const savedUser = localStorage.getItem('admin_user') || sessionStorage.getItem('admin_user');
     if (savedUser) {
       setUser(JSON.parse(savedUser));
     }
@@ -31,12 +31,13 @@ function App() {
 
   const handleLoginSuccess = (userData: any) => {
     setUser(userData);
-    localStorage.setItem('admin_user', JSON.stringify(userData));
+    // Note: Login.tsx already handles saving to localStorage/sessionStorage
   };
 
   const handleLogout = () => {
     setUser(null);
     localStorage.removeItem('admin_user');
+    sessionStorage.removeItem('admin_user');
     setShowLogoutConfirm(false);
   };
 

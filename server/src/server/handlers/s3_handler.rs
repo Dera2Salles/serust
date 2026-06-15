@@ -18,6 +18,7 @@ pub async fn serve_s3(
     files: Arc<FileService>,
     shares: Arc<ShareService>,
     logs: Arc<crate::database::log_usecases::LogAccessUseCase>,
+    _sessions: crate::common::session::SharedSessionRegistry,
 ) -> Result<S3Response, Infallible> {
     match handle_request(req, auth, files, shares, logs).await {
         Ok(response) => Ok(response),

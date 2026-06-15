@@ -25,6 +25,7 @@ pub struct McpServerState {
     pub auth_service: Arc<crate::user::service::AuthService>,
     pub log_access_usecase: Arc<crate::database::log_usecases::LogAccessUseCase>,
     pub db: Database,
+    pub sessions: crate::common::session::SharedSessionRegistry,
 }
 
 /// Start the MCP HTTP server on a separate port.
@@ -93,26 +94,7 @@ async fn handle_http(
     }
 
     if method == Method::GET && path == "/api/server/status" {
-        let sessions = json!([
-            {
-                "peer_addr": "192.168.1.15:54321",
-                "connected_at": "2026-06-03T10:15:00Z",
-                "last_command": "LIST /photos",
-                "username": "alice"
-            },
-            {
-                "peer_addr": "10.0.0.5:12345",
-                "connected_at": "2026-06-03T10:20:00Z",
-                "last_command": "GET /docs/plan.pdf",
-                "username": "bob"
-            },
-            {
-                "peer_addr": "172.16.0.2:44332",
-                "connected_at": "2026-06-03T10:22:00Z",
-                "last_command": "AUTH",
-                "username": null
-            }
-        ]);
+        let sessions = state.sessions.get_all_sessions();
         return Ok(json_response(
             StatusCode::OK,
             json!({"status": "ok", "sessions": sessions}),

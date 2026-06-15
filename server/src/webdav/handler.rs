@@ -29,6 +29,7 @@ pub async fn serve_webdav(
     req: Request<Incoming>,
     auth: Arc<AuthService>,
     files: Arc<FileService>,
+    _sessions: crate::common::session::SharedSessionRegistry,
 ) -> Result<WebDavResponse, Infallible> {
     match handle_request(req, auth, files).await {
         Ok(response) => Ok(response),

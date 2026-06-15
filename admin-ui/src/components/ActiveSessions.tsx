@@ -3,7 +3,8 @@ import { Header, AroChip, cn } from './OneUI';
 import { Activity, Clock, Globe, Terminal, ZapOff } from 'lucide-react';
 
 interface Session {
-  peer_addr: String;
+  id: string;
+  peer_addr: string;
   connected_at: string;
   last_command: string | null;
   username: string | null;

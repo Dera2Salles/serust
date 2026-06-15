@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { RefreshCcw, ChevronDown, Activity, Terminal, Clock, User, FileText, Database } from 'lucide-react';
+import { RefreshCcw, ChevronDown, Activity, Terminal, Clock, User, FileText, Database, Trash2, Search } from 'lucide-react';
 import { Header, cn } from './OneUI';
 
 interface ActivityLog {
@@ -27,29 +27,36 @@ export const SystemLogs: React.FC = () => {
   const [tab, setTab] = useState<'system' | 'activity'>('activity');
   const [autoScroll, setAutoScroll] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const fetchLogs = async () => {
-    setLoading(true);
     try {
       const c = await invoke<string>('read_server_logs');
       setLogs(c.split('\n'));
     } catch (e) { console.error("Failed to read system logs", e); }
-    finally { setLoading(false); }
   };
 
   const fetchActivity = async () => {
-    setLoading(true);
     try {
       const data = await invoke<ActivityLog[]>('get_activity_logs_db');
       setActivityLogs(data || []);
     } catch (e) { console.error("Failed to read activity logs", e); }
-    finally { setLoading(false); }
   };
 
-  const refresh = () => {
-    if (tab === 'system') fetchLogs();
-    else fetchActivity();
+  const refresh = async () => {
+    setLoading(true);
+    if (tab === 'system') await fetchLogs();
+    else await fetchActivity();
+    setLoading(false);
+  };
+
+  const clearLogs = async () => {
+    if (!window.confirm("Voulez-vous vraiment vider les journaux techniques ?")) return;
+    try {
+      await invoke('clear_server_logs');
+      setLogs([]);
+    } catch (e) { alert(`Erreur: ${e}`); }
   };
 
   useEffect(() => {
@@ -65,38 +72,65 @@ export const SystemLogs: React.FC = () => {
   }, [logs, autoScroll, tab]);
 
   const getLineStyle = (line: string): React.CSSProperties => {
-    if (line.includes('ERROR') || line.includes('error')) return { color: '#c42b1c', fontWeight: 600 };
-    if (line.includes('WARN') || line.includes('warn')) return { color: '#7a4100', fontWeight: 600 };
-    if (line.includes('INFO') || line.includes('info')) return { color: '#107c10', fontWeight: 500 };
-    return { color: 'var(--color-win-text)' };
+    const l = line.toLowerCase();
+    if (l.includes('error') || l.includes('fail')) return { color: '#ff6b6b', fontWeight: 600 };
+    if (l.includes('warn')) return { color: '#ffd93d', fontWeight: 600 };
+    if (l.includes('info')) return { color: '#6bff6b', fontWeight: 500 };
+    if (l.includes('debug')) return { color: '#888', fontStyle: 'italic' };
+    return { color: '#e0e0e0' };
   };
+
+  const filteredLogs = tab === 'system' 
+    ? logs.filter(line => line.toLowerCase().includes(searchQuery.toLowerCase()))
+    : activityLogs.filter(log => 
+        (log.username?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
+        log.filename.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        log.action.toLowerCase().includes(searchQuery.toLowerCase())
+      );
 
   return (
     <div style={{ padding: '0 0 40px 0', height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <Header title="Journaux Système" subtitle="Surveillance des actions important et logs techniques" />
+      <Header title="Journaux Système" subtitle="Surveillance des actions importantes et logs techniques" />
 
-      {/* Tabs */}
-      <div style={{ padding: '0 28px 16px', display: 'flex', gap: 12 }}>
-        <button 
-          onClick={() => setTab('activity')}
-          className={cn('fluent-btn', tab === 'activity' && 'fluent-btn-accent')}
-          style={{ gap: 8 }}
-        >
-          <Activity size={15} /> Historique d'activité
-        </button>
-        <button 
-          onClick={() => setTab('system')}
-          className={cn('fluent-btn', tab === 'system' && 'fluent-btn-accent')}
-          style={{ gap: 8 }}
-        >
-          <Terminal size={15} /> Logs techniques (Serveur)
-        </button>
+      {/* Toolbar */}
+      <div style={{ padding: '0 28px 16px', display: 'flex', gap: 12, alignItems: 'center' }}>
+        <div style={{ display: 'flex', background: 'var(--color-win-surface)', borderRadius: 8, padding: 2, border: '1px solid var(--color-win-stroke)' }}>
+          <button 
+            onClick={() => { setTab('activity'); setSearchQuery(''); }}
+            className={cn('fluent-btn', tab === 'activity' && 'fluent-btn-accent')}
+            style={{ gap: 8, border: 'none', boxShadow: 'none' }}
+          >
+            <Activity size={15} /> Historique
+          </button>
+          <button 
+            onClick={() => { setTab('system'); setSearchQuery(''); }}
+            className={cn('fluent-btn', tab === 'system' && 'fluent-btn-accent')}
+            style={{ gap: 8, border: 'none', boxShadow: 'none' }}
+          >
+            <Terminal size={15} /> Logs techniques
+          </button>
+        </div>
 
-        <div style={{ flex: 1 }} />
+        <div style={{ position: 'relative', flex: 1, maxWidth: 400 }}>
+          <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-win-text3)' }} />
+          <input 
+            className="fluent-input" 
+            placeholder="Rechercher dans les journaux..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ paddingLeft: 36, width: '100%' }}
+          />
+        </div>
 
-        <button className="fluent-btn" onClick={refresh} disabled={loading}>
+        <button className="fluent-btn" onClick={refresh} disabled={loading} title="Actualiser">
           <RefreshCcw size={14} className={loading ? 'animate-spin' : ''} />
         </button>
+
+        {tab === 'system' && (
+          <button className="fluent-btn fluent-btn-danger" onClick={clearLogs} title="Vider les logs">
+            <Trash2 size={14} />
+          </button>
+        )}
       </div>
 
       <div style={{ padding: '0 28px', flex: 1, overflow: 'hidden' }}>
@@ -104,14 +138,17 @@ export const SystemLogs: React.FC = () => {
           
           {tab === 'system' ? (
             <>
-              <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--color-win-stroke)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-win-text3)' }}>FICHIER: server.log</span>
+              <div style={{ padding: '8px 20px', borderBottom: '1px solid var(--color-win-stroke)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--color-win-nav)' }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-win-text3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Fichier: server.log ({logs.length} lignes)
+                </span>
                 <button
                   className={`fluent-btn ${autoScroll ? 'fluent-btn-accent' : ''}`}
-                  style={{ padding: '4px 10px', fontSize: 11 }}
+                  style={{ padding: '2px 10px', fontSize: 10, height: 24 }}
                   onClick={() => setAutoScroll(!autoScroll)}
                 >
-                  <ChevronDown size={12} /> {autoScroll ? 'Auto-scroll' : 'Manuel'}
+                  <ChevronDown size={12} style={{ transform: autoScroll ? 'none' : 'rotate(180deg)', transition: 'transform 0.2s' }} /> 
+                  {autoScroll ? 'AUTO-SCROLL ON' : 'AUTO-SCROLL OFF'}
                 </button>
               </div>
               <div
@@ -119,14 +156,18 @@ export const SystemLogs: React.FC = () => {
                 style={{
                   flex: 1,
                   overflow: 'auto',
-                  background: '#1e1e1e', // Dark mode for technical logs
+                  background: '#121212', // Darker black for better contrast
                   padding: '16px 20px',
-                  fontFamily: "'Cascadia Code', 'Consolas', 'Courier New', monospace",
+                  fontFamily: "'Cascadia Code', 'JetBrains Mono', 'Consolas', monospace",
                   fontSize: 12,
                   lineHeight: 1.6,
                 }}
               >
-                {logs.map((line, i) => (
+                {filteredLogs.length === 0 ? (
+                  <div style={{ color: '#555', textAlign: 'center', marginTop: 40 }}>
+                    {searchQuery ? 'Aucun résultat pour cette recherche' : 'Le fichier de log est vide'}
+                  </div>
+                ) : (filteredLogs as string[]).map((line, i) => (
                   <div key={i} style={{ ...getLineStyle(line), whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
                     {line || '\u00A0'}
                   </div>
@@ -146,15 +187,15 @@ export const SystemLogs: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {activityLogs.length === 0 ? (
+                  {filteredLogs.length === 0 ? (
                     <tr>
                       <td colSpan={5} style={{ padding: 40, textAlign: 'center', opacity: 0.5 }}>
                         <Database size={32} style={{ margin: '0 auto 12px' }} />
-                        <p>Aucune activité enregistrée</p>
+                        <p>{searchQuery ? 'Aucun résultat correspondant' : 'Aucune activité enregistrée'}</p>
                       </td>
                     </tr>
-                  ) : activityLogs.map((log) => (
-                    <tr key={log.id} style={{ borderBottom: '1px solid var(--color-win-stroke)' }}>
+                  ) : (filteredLogs as ActivityLog[]).map((log) => (
+                    <tr key={log.id} style={{ borderBottom: '1px solid var(--color-win-stroke)', transition: 'background 0.1s' }} className="hover:bg-[--color-win-nav]">
                       <td style={{ padding: '10px 20px', whiteSpace: 'nowrap', color: 'var(--color-win-text3)' }}>
                         <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <Clock size={12} /> {new Date(log.accessed_at).toLocaleString('fr-FR')}
@@ -168,7 +209,7 @@ export const SystemLogs: React.FC = () => {
                       </td>
                       <td style={{ padding: '10px 20px' }}>
                         <span style={{ 
-                          padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600, textTransform: 'uppercase',
+                          padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
                           background: log.action === 'upload' ? 'var(--color-success-bg)' : 'var(--color-accent-light)',
                           color: log.action === 'upload' ? 'var(--color-success)' : 'var(--color-accent)'
                         }}>
@@ -195,3 +236,4 @@ export const SystemLogs: React.FC = () => {
     </div>
   );
 };
+
