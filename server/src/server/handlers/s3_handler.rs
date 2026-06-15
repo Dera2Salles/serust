@@ -18,9 +18,10 @@ pub async fn serve_s3(
     files: Arc<FileService>,
     shares: Arc<ShareService>,
     logs: Arc<crate::database::log_usecases::LogAccessUseCase>,
-    _sessions: crate::common::session::SharedSessionRegistry,
+    sessions: crate::common::session::SharedSessionRegistry,
+    session_id: String,
 ) -> Result<S3Response, Infallible> {
-    match handle_request(req, auth, files, shares, logs).await {
+    match handle_request(req, auth, files, shares, logs, sessions, session_id).await {
         Ok(response) => Ok(response),
         Err(e) => {
             error!("S3 API error: {:?}", e);
@@ -37,9 +38,14 @@ async fn handle_request(
     files: Arc<FileService>,
     shares: Arc<ShareService>,
     logs: Arc<crate::database::log_usecases::LogAccessUseCase>,
+    sessions: crate::common::session::SharedSessionRegistry,
+    session_id: String,
 ) -> Result<S3Response, BoxError> {
     let user = match authenticate(&req, auth.clone()).await {
-        Ok(u) => u,
+        Ok(u) => {
+            sessions.update_last_command(&session_id, format!("{} {}", req.method(), req.uri().path()), Some(u.username.clone()));
+            u
+        },
         Err(_) => {
             let mut res = Response::new(Full::new(Bytes::from("Unauthorized")));
             *res.status_mut() = StatusCode::UNAUTHORIZED;

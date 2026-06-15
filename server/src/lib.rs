@@ -113,6 +113,7 @@ pub async fn run_server() -> anyhow::Result<()> {
                                             auth,
                                             files,
                                             sessions_inner,
+                                            session_id_inner,
                                         ).await
                                     }
                                 }),
@@ -182,6 +183,7 @@ pub async fn run_server() -> anyhow::Result<()> {
                                     shares,
                                     logs,
                                     sessions_inner,
+                                    session_id_inner,
                                 ).await
                             }
                         }),

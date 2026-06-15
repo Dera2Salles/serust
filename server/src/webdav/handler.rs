@@ -29,9 +29,10 @@ pub async fn serve_webdav(
     req: Request<Incoming>,
     auth: Arc<AuthService>,
     files: Arc<FileService>,
-    _sessions: crate::common::session::SharedSessionRegistry,
+    sessions: crate::common::session::SharedSessionRegistry,
+    session_id: String,
 ) -> Result<WebDavResponse, Infallible> {
-    match handle_request(req, auth, files).await {
+    match handle_request(req, auth, files, sessions, session_id).await {
         Ok(response) => Ok(response),
         Err(e) => {
             error!("WebDAV error: {:?}", e);
@@ -46,9 +47,14 @@ async fn handle_request(
     req: Request<Incoming>,
     auth: Arc<AuthService>,
     files: Arc<FileService>,
+    sessions: crate::common::session::SharedSessionRegistry,
+    session_id: String,
 ) -> Result<WebDavResponse, BoxError> {
     let user = match authenticate(&req, auth).await {
-        Ok(u) => u,
+        Ok(u) => {
+            sessions.update_last_command(&session_id, format!("{} {}", req.method(), req.uri().path()), Some(u.username.clone()));
+            u
+        },
         Err(_) => {
             let mut res = Response::new(Full::new(Bytes::from("Unauthorized")));
             *res.status_mut() = StatusCode::UNAUTHORIZED;
