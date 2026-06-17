@@ -25,7 +25,9 @@ pub async fn serve_s3(
         Ok(response) => Ok(response),
         Err(e) => {
             error!("S3 API error: {:?}", e);
-            let mut response = Response::new(Full::new(Bytes::from("Internal Server Error")));
+            let json_err = format!(r#"{{"error": "internal_server_error"}}"#);
+            let mut response = Response::new(Full::new(Bytes::from(json_err)));
+            response.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
             *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
             Ok(response)
         }
@@ -47,7 +49,9 @@ async fn handle_request(
             u
         },
         Err(_) => {
-            let mut res = Response::new(Full::new(Bytes::from("Unauthorized")));
+            let json_err = format!(r#"{{"error": "unauthorized"}}"#);
+            let mut res = Response::new(Full::new(Bytes::from(json_err)));
+            res.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
             *res.status_mut() = StatusCode::UNAUTHORIZED;
             return Ok(res);
         }
@@ -60,95 +64,106 @@ async fn handle_request(
 
     let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
     if segments.is_empty() {
-        let mut res = Response::new(Full::new(Bytes::from("Invalid S3 path")));
+        let json_err = format!(r#"{{"error": "invalid_s3_path"}}"#);
+        let mut res = Response::new(Full::new(Bytes::from(json_err)));
+        res.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
         *res.status_mut() = StatusCode::BAD_REQUEST;
         return Ok(res);
-    }
+        }
 
-    let mut rel_path_raw = segments[1..].join("/");
-    
-    if method == "GET" && segments.len() == 3 && segments[2] == ".profile_pic.jpg" {
+        let mut rel_path_raw = segments[1..].join("/");
+
+        if method == "GET" && segments.len() == 3 && segments[2] == ".profile_pic.jpg" {
         let target_username = segments[1];
         if target_username != user.username {
-            if let Ok(Some(other_user)) = auth.get_user_by_username(target_username).await {
-                return handle_get_object(&req, &other_user, ".profile_pic.jpg", files, logs.clone()).await;
+        if let Ok(Some(other_user)) = auth.get_user_by_username(target_username).await {
+            return handle_get_object(&req, &other_user, ".profile_pic.jpg", files, logs.clone()).await;
+        }
+        }
+        }
+
+        if segments.len() > 2 && segments[1] == user.username {
+        rel_path_raw = segments[2..].join("/");
+        } else if segments.len() == 2 && segments[1] == user.username {
+        rel_path_raw = String::new();
+        }
+
+        let rel_path = percent_decode_str(&rel_path_raw).decode_utf8_lossy().to_string();
+        let is_dir_hint = req.uri().path().ends_with('/');
+
+        match method.as_str() {
+        "GET" => {
+        if let Some(query) = req.uri().query() {
+            if query.contains("list-type=2") {
+                return handle_list_objects(&user, &rel_path, files, shares.clone()).await;
+            }
+            if query.contains("shares=in") {
+                return handle_list_shares(&req, &user, shares).await;
+            }
+            if query.contains("git=history") {
+                return handle_git_history(&user, &rel_path, files).await;
+            }
+            if query.contains("git=diff") {
+                let hash = query.split('&')
+                    .find(|s| s.starts_with("hash="))
+                    .and_then(|s| s.split('=').nth(1))
+                    .unwrap_or("");
+                return handle_git_diff(&user, &rel_path, hash, files).await;
             }
         }
-    }
-
-    if segments.len() > 2 && segments[1] == user.username {
-        rel_path_raw = segments[2..].join("/");
-    } else if segments.len() == 2 && segments[1] == user.username {
-        rel_path_raw = String::new();
-    }
-
-    let rel_path = percent_decode_str(&rel_path_raw).decode_utf8_lossy().to_string();
-    let is_dir_hint = req.uri().path().ends_with('/');
-
-    match method.as_str() {
-        "GET" => {
-            if let Some(query) = req.uri().query() {
-                if query.contains("list-type=2") {
-                    return handle_list_objects(&user, &rel_path, files, shares.clone()).await;
-                }
-                if query.contains("shares=in") {
-                    return handle_list_shares(&req, &user, shares).await;
-                }
-                if query.contains("git=history") {
-                    return handle_git_history(&user, &rel_path, files).await;
-                }
-                if query.contains("git=diff") {
-                    let hash = query.split('&')
-                        .find(|s| s.starts_with("hash="))
-                        .and_then(|s| s.split('=').nth(1))
-                        .unwrap_or("");
-                    return handle_git_diff(&user, &rel_path, hash, files).await;
-                }
-            }
-            handle_get_object(&req, &user, &rel_path, files, logs).await
+        handle_get_object(&req, &user, &rel_path, files, logs).await
         }
         "POST" => {
-            if let Some(query) = req.uri().query() {
-                if query.contains("rename=") {
-                    let to_raw = query.split('&').find(|s| s.starts_with("rename=")).and_then(|s| s.split('=').nth(1)).unwrap_or("");
-                    let to = percent_decode_str(to_raw).decode_utf8_lossy().to_string();
-                    return handle_rename(&user, &rel_path, &to, files).await;
-                }
-                if query.contains("git=restore") {
-                    let hash = query.split('&')
-                        .find(|s| s.starts_with("hash="))
-                        .and_then(|s| s.split('=').nth(1))
-                        .unwrap_or("");
-                    return handle_git_restore(&user, &rel_path, hash, files).await;
-                }
-                if query.contains("share=grant") {
-                    let to = query.split('&').find(|s| s.starts_with("to=")).and_then(|s| s.split('=').nth(1)).unwrap_or("");
-                    let perm = query.split('&').find(|s| s.starts_with("perm=")).and_then(|s| s.split('=').nth(1)).unwrap_or("read");
-                    let reshare = query.split('&').find(|s| s.starts_with("reshare=")).and_then(|s| s.split('=').nth(1)).unwrap_or("false") == "true";
-                    let expires_at = query.split('&').find(|s| s.starts_with("expires_at=")).and_then(|s| s.split('=').nth(1)).and_then(|s| s.parse::<u64>().ok());
-                    return handle_share_grant(&user, &rel_path, to, perm, reshare, expires_at, shares).await;
-                }
-                if query.contains("compress=") {
-                    let format = query.split('&').find(|s| s.starts_with("compress=")).and_then(|s| s.split('=').nth(1)).unwrap_or("zip");
-                    return handle_compress(&user, &rel_path, format, files).await;
-                }
-                if query.contains("decompress=true") {
-                    return handle_decompress(&user, &rel_path, files).await;
-                }
+        if let Some(query) = req.uri().query() {
+            if query.contains("rename=") {
+                let to_raw = query.split('&').find(|s| s.starts_with("rename=")).and_then(|s| s.split('=').nth(1)).unwrap_or("");
+                let to = percent_decode_str(to_raw).decode_utf8_lossy().to_string();
+                return handle_rename(&user, &rel_path, &to, files).await;
             }
-            let mut res = Response::new(Full::new(Bytes::from("Method Not Allowed")));
-            *res.status_mut() = StatusCode::METHOD_NOT_ALLOWED;
-            Ok(res)
+            if query.contains("git=restore") {
+                let hash = query.split('&')
+                    .find(|s| s.starts_with("hash="))
+                    .and_then(|s| s.split('=').nth(1))
+                    .unwrap_or("");
+                return handle_git_restore(&user, &rel_path, hash, files).await;
+            }
+            if query.contains("share=grant") {
+                let to = query.split('&').find(|s| s.starts_with("to=")).and_then(|s| s.split('=').nth(1)).unwrap_or("");
+                let perm = query.split('&').find(|s| s.starts_with("perm=")).and_then(|s| s.split('=').nth(1)).unwrap_or("read");
+                let reshare = query.split('&').find(|s| s.starts_with("reshare=")).and_then(|s| s.split('=').nth(1)).unwrap_or("false") == "true";
+                let expires_at = query.split('&').find(|s| s.starts_with("expires_at=")).and_then(|s| s.split('=').nth(1)).and_then(|s| s.parse::<u64>().ok());
+                return handle_share_grant(&user, &rel_path, to, perm, reshare, expires_at, shares).await;
+            }
+            if query.contains("compress=") {
+                let format = query.split('&').find(|s| s.starts_with("compress=")).and_then(|s| s.split('=').nth(1)).unwrap_or("zip");
+                return handle_compress(&user, &rel_path, format, files).await;
+            }
+            if query.contains("decompress=true") {
+                return handle_decompress(&user, &rel_path, files).await;
+            }
         }
-        "PUT" => handle_put_object(req, &user, &rel_path, is_dir_hint, files, logs).await,
+        let json_err = format!(r#"{{"error": "method_not_allowed"}}"#);
+        let mut res = Response::new(Full::new(Bytes::from(json_err)));
+        res.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+        *res.status_mut() = StatusCode::METHOD_NOT_ALLOWED;
+        Ok(res)
+        }
+        "PUT" => {
+        let overwrite = req.uri().query()
+            .map(|q| q.contains("overwrite=true"))
+            .unwrap_or(false);
+        handle_put_object(req, &user, &rel_path, is_dir_hint, overwrite, files, logs).await
+        }
         "DELETE" => handle_delete_object(&user, &rel_path, files, logs).await,
         _ => {
-            let mut res = Response::new(Full::new(Bytes::from("Method Not Allowed")));
-            *res.status_mut() = StatusCode::METHOD_NOT_ALLOWED;
-            Ok(res)
+        let json_err = format!(r#"{{"error": "method_not_allowed"}}"#);
+        let mut res = Response::new(Full::new(Bytes::from(json_err)));
+        res.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+        *res.status_mut() = StatusCode::METHOD_NOT_ALLOWED;
+        Ok(res)
         }
-    }
-}
+        }
+        }
 
 async fn authenticate(
     req: &Request<Incoming>,
@@ -212,12 +227,18 @@ async fn handle_get_object(
         }
         Err(e) => {
             use crate::common::error::DomainError;
-            let (status, msg) = match e {
-                DomainError::PermissionDenied => (StatusCode::FORBIDDEN, "Permission Denied"),
-                DomainError::FileNotFound => (StatusCode::NOT_FOUND, "Not Found"),
-                _ => (StatusCode::INTERNAL_SERVER_ERROR, "Internal Error"),
+            let (status, error_code) = match e {
+                DomainError::PermissionDenied => (StatusCode::FORBIDDEN, "permission_denied"),
+                DomainError::FileNotFound => (StatusCode::NOT_FOUND, "file_not_found"),
+                DomainError::InvalidCredentials => (StatusCode::UNAUTHORIZED, "invalid_credentials"),
+                DomainError::FileTooLarge => (StatusCode::PAYLOAD_TOO_LARGE, "file_too_large"),
+                DomainError::UnsafePath => (StatusCode::BAD_REQUEST, "unsafe_path"),
+                DomainError::PendingApproval => (StatusCode::FORBIDDEN, "account_pending_approval"),
+                _ => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error"),
             };
-            let mut res = Response::new(Full::new(Bytes::from(msg)));
+            let json_err = format!(r#"{{"error": "{}"}}"#, error_code);
+            let mut res = Response::new(Full::new(Bytes::from(json_err)));
+            res.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
             *res.status_mut() = status;
             Ok(res)
         }
@@ -236,9 +257,18 @@ async fn handle_rename(
             *res.status_mut() = StatusCode::OK;
             Ok(res)
         }
+        Err(crate::common::error::DomainError::AlreadyExists) => {
+            let json_err = format!(r#"{{"error": "file_already_exists"}}"#);
+            let mut res = Response::new(Full::new(Bytes::from(json_err)));
+            res.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+            *res.status_mut() = StatusCode::CONFLICT;
+            Ok(res)
+        }
         Err(e) => {
             error!("S3 Rename failed: {:?}", e);
-            let mut res = Response::new(Full::new(Bytes::from(format!("Rename failed: {}", e))));
+            let json_err = format!(r#"{{"error": "rename_failed"}}"#);
+            let mut res = Response::new(Full::new(Bytes::from(json_err)));
+            res.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
             *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
             Ok(res)
         }
@@ -250,9 +280,12 @@ async fn handle_put_object(
     user: &crate::user::domain::User,
     path: &str,
     is_dir: bool,
+    overwrite: bool,
     files: Arc<FileService>,
     logs: Arc<crate::database::log_usecases::LogAccessUseCase>,
 ) -> Result<S3Response, BoxError> {
+    use crate::common::error::DomainError;
+
     if is_dir {
         match files.mkdir(user, "/", path).await {
             Ok(_) => {
@@ -262,7 +295,9 @@ async fn handle_put_object(
             }
             Err(e) => {
                 error!("S3 MKDIR failed: {:?}", e);
-                let mut res = Response::new(Full::new(Bytes::from("Internal Error")));
+                let json_err = format!(r#"{{"error": "internal_error"}}"#);
+                let mut res = Response::new(Full::new(Bytes::from(json_err)));
+                res.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
                 *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
                 return Ok(res);
             }
@@ -272,7 +307,7 @@ async fn handle_put_object(
     let body_bytes = req.into_body().collect().await?.to_bytes();
     let size = body_bytes.len() as u64;
 
-    match files.upload(user, "/", path, size, body_bytes.to_vec()).await {
+    match files.upload(user, "/", path, size, body_bytes.to_vec(), overwrite).await {
         Ok(_) => {
             if let Ok(Some(meta)) = files.find_db_file_by_path(user.id, path).await {
                 let _ = logs.execute(&crate::database::domain::DbAccessLog {
@@ -293,10 +328,25 @@ async fn handle_put_object(
             *res.status_mut() = StatusCode::OK;
             Ok(res)
         }
+        Err(DomainError::AlreadyExists) => {
+            let json_err = format!(r#"{{"error": "file_already_exists"}}"#);
+            let mut res = Response::new(Full::new(Bytes::from(json_err)));
+            res.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+            *res.status_mut() = StatusCode::CONFLICT;
+            Ok(res)
+        }
         Err(e) => {
             error!("S3 PUT failed: {:?}", e);
-            let mut res = Response::new(Full::new(Bytes::from("Internal Error")));
-            *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+            let (status, error_code) = match e {
+                DomainError::PermissionDenied => (StatusCode::FORBIDDEN, "permission_denied"),
+                DomainError::FileTooLarge => (StatusCode::PAYLOAD_TOO_LARGE, "file_too_large"),
+                DomainError::UnsafePath => (StatusCode::BAD_REQUEST, "unsafe_path"),
+                _ => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error"),
+            };
+            let json_err = format!(r#"{{"error": "{}"}}"#, error_code);
+            let mut res = Response::new(Full::new(Bytes::from(json_err)));
+            res.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+            *res.status_mut() = status;
             Ok(res)
         }
     }
@@ -332,7 +382,9 @@ async fn handle_delete_object(
             Ok(res)
         }
         Err(_) => {
-            let mut res = Response::new(Full::new(Bytes::from("Not Found")));
+            let json_err = format!(r#"{{"error": "file_not_found"}}"#);
+            let mut res = Response::new(Full::new(Bytes::from(json_err)));
+            res.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
             *res.status_mut() = StatusCode::NOT_FOUND;
             Ok(res)
         }
@@ -416,7 +468,9 @@ async fn handle_list_objects(
             Ok(res)
         }
         Err(_) => {
-            let mut res = Response::new(Full::new(Bytes::from("Internal Error")));
+            let json_err = format!(r#"{{"error": "internal_error"}}"#);
+            let mut res = Response::new(Full::new(Bytes::from(json_err)));
+            res.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
             *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
             Ok(res)
         }
@@ -442,7 +496,9 @@ async fn handle_git_history(
             Ok(res)
         }
         Err(_) => {
-            let mut res = Response::new(Full::new(Bytes::from("Error fetching history")));
+            let json_err = format!(r#"{{"error": "error_fetching_history"}}"#);
+            let mut res = Response::new(Full::new(Bytes::from(json_err)));
+            res.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
             *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
             Ok(res)
         }
@@ -465,7 +521,9 @@ async fn handle_git_diff(
             Ok(res)
         }
         Err(_) => {
-            let mut res = Response::new(Full::new(Bytes::from("Error fetching diff")));
+            let json_err = format!(r#"{{"error": "error_fetching_diff"}}"#);
+            let mut res = Response::new(Full::new(Bytes::from(json_err)));
+            res.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
             *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
             Ok(res)
         }
@@ -488,7 +546,9 @@ async fn handle_git_restore(
             Ok(res)
         }
         Err(_) => {
-            let mut res = Response::new(Full::new(Bytes::from("Error restoring version")));
+            let json_err = format!(r#"{{"error": "error_restoring_version"}}"#);
+            let mut res = Response::new(Full::new(Bytes::from(json_err)));
+            res.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
             *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
             Ok(res)
         }
@@ -515,7 +575,9 @@ async fn handle_share_grant(
             Ok(res)
         }
         Err(_) => {
-            let mut res = Response::new(Full::new(Bytes::from("Error granting share")));
+            let json_err = format!(r#"{{"error": "error_granting_share"}}"#);
+            let mut res = Response::new(Full::new(Bytes::from(json_err)));
+            res.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
             *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
             Ok(res)
         }
@@ -559,7 +621,9 @@ async fn handle_compress(
             Ok(res)
         }
         Err(_) => {
-            let mut res = Response::new(Full::new(Bytes::from("Error compressing")));
+            let json_err = format!(r#"{{"error": "error_compressing"}}"#);
+            let mut res = Response::new(Full::new(Bytes::from(json_err)));
+            res.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
             *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
             Ok(res)
         }
@@ -581,7 +645,9 @@ async fn handle_decompress(
             Ok(res)
         }
         Err(_) => {
-            let mut res = Response::new(Full::new(Bytes::from("Error decompressing")));
+            let json_err = format!(r#"{{"error": "error_decompressing"}}"#);
+            let mut res = Response::new(Full::new(Bytes::from(json_err)));
+            res.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
             *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
             Ok(res)
         }

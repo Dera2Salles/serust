@@ -378,7 +378,7 @@ async fn handle_put(
     let size = body_bytes.len() as u64;
 
     match files
-        .upload(user, "/", path, size, body_bytes.to_vec())
+        .upload(user, "/", path, size, body_bytes.to_vec(), true)
         .await
     {
         Ok(_) => {

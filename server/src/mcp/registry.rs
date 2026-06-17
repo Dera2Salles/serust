@@ -753,7 +753,7 @@ impl McpRegistry {
 
         match self
             .file_service
-            .upload(&user, path, filename, size, data)
+            .upload(&user, path, filename, size, data, false)
             .await
         {
             Ok(_) => McpToolResult::success(format!("File '{}' created.", filename)),

@@ -70,8 +70,19 @@ impl RenameUseCase {
             if !PermissionChecker::can_access(user, &existing.owner, &Permission::Write) {
                 return Err(DomainError::PermissionDenied);
             }
-        } else if stat.is_none() {
+        }
+
+        if stat.is_none() {
             return Err(DomainError::FileNotFound);
+        }
+
+        if self
+            .file_repo
+            .stat(&user.username, &new_resolved)
+            .await?
+            .is_some()
+        {
+            return Err(DomainError::AlreadyExists);
         }
 
         self.file_repo

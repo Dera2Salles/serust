@@ -95,6 +95,7 @@ impl UploadUseCase {
         filename: &str,
         size: u64,
         data: Vec<u8>,
+        overwrite: bool,
     ) -> Result<(), DomainError> {
         let resolved = PermissionChecker::resolve_path(cwd, filename);
 
@@ -120,6 +121,9 @@ impl UploadUseCase {
         if let Some(existing) = self.file_repo.get_metadata(&user.username, &resolved).await {
             if !PermissionChecker::can_access(user, &existing.owner, &Permission::Write) {
                 return Err(DomainError::PermissionDenied);
+            }
+            if !overwrite {
+                return Err(DomainError::AlreadyExists);
             }
         }
 

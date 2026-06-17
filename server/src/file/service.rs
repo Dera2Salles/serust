@@ -170,8 +170,9 @@ impl FileService {
         filename: &str,
         size: u64,
         data: Vec<u8>,
+        overwrite: bool,
     ) -> Result<(), DomainError> {
-        self.upload.execute(user, cwd, filename, size, data).await
+        self.upload.execute(user, cwd, filename, size, data, overwrite).await
     }
 
     pub async fn list(&self, user: &User, cwd: &str) -> Result<Vec<(String, bool)>, DomainError> {

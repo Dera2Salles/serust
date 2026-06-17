@@ -11,6 +11,9 @@ pub enum DomainError {
     #[error("file_not_found")]
     FileNotFound,
 
+    #[error("file_already_exists")]
+    AlreadyExists,
+
     #[error("permission_denied")]
     PermissionDenied,
 
