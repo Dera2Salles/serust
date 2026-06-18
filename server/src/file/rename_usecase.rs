@@ -1,7 +1,9 @@
 use crate::common::error::DomainError;
-use crate::common::permission::{Permission, PermissionChecker};
+use crate::common::permission::PermissionChecker;
 use crate::database::domain::DbFileMetadata;
-use crate::database::file_usecases::{CreateFileUseCase, FindFileByPathUseCase, RenameFileDbUseCase, UpdatePathPrefixDbUseCase};
+use crate::database::file_usecases::{
+    CreateFileUseCase, FindFileByPathUseCase, RenameFileDbUseCase, UpdatePathPrefixDbUseCase,
+};
 use crate::file::git_service::GitService;
 use crate::file::interfaces::IFileRepository;
 use crate::user::domain::User;
@@ -45,6 +47,7 @@ impl RenameUseCase {
         cwd: &str,
         old_name: &str,
         new_name: &str,
+        overwrite: bool,
     ) -> Result<(), DomainError> {
         let old_resolved = PermissionChecker::resolve_path(cwd, old_name);
         let new_resolved = PermissionChecker::resolve_path(cwd, new_name);
@@ -59,24 +62,43 @@ impl RenameUseCase {
             return Err(DomainError::PermissionDenied);
         }
 
-        let stat = self.file_repo.stat(&user.username, &old_resolved).await?;
-        let is_dir = stat.as_ref().map_or(false, |(_, d)| *d);
-
-        if let Some(existing) = self
-            .file_repo
-            .get_metadata(&user.username, &old_resolved)
-            .await
-        {
-            if !PermissionChecker::can_access(user, &existing.owner, &Permission::Write) {
+        // Bug 2 + Bug 5 fix: use DB record to check soft-delete state and real ownership.
+        // file_repo.stat() is a raw filesystem check that bypasses both.
+        let old_storage_path = format!("/{}", old_resolved);
+        if let Ok(Some(db_file)) = self.find_db_file.execute(user.id, &old_storage_path).await {
+            if db_file.is_deleted {
+                return Err(DomainError::FileNotFound);
+            }
+            if db_file.owner_id != user.id {
                 return Err(DomainError::PermissionDenied);
             }
         }
+
+        let stat = self.file_repo.stat(&user.username, &old_resolved).await?;
+        let is_dir = stat.as_ref().map_or(false, |(_, d)| *d);
 
         if stat.is_none() {
             return Err(DomainError::FileNotFound);
         }
 
-        if self
+        if overwrite {
+            // Pre-remove destination so fs::rename can proceed (handles both files and dirs).
+            if let Ok(Some((_, is_dest_dir))) =
+                self.file_repo.stat(&user.username, &new_resolved).await
+            {
+                if is_dest_dir {
+                    let _ = self
+                        .file_repo
+                        .remove_dir(&user.username, &new_resolved)
+                        .await;
+                } else {
+                    let _ = self
+                        .file_repo
+                        .delete_file(&user.username, &new_resolved)
+                        .await;
+                }
+            }
+        } else if self
             .file_repo
             .stat(&user.username, &new_resolved)
             .await?
@@ -89,11 +111,16 @@ impl RenameUseCase {
             .rename(&user.username, &old_resolved, &new_resolved)
             .await?;
 
+        // Bug 7 fix: commit rename as a single atomic git operation AFTER the rename completes.
+        // Old path no longer exists on disk, so we use commit_rename (not two commit_file calls).
         let user_path = self.storage_root.join(&user.username);
-        let _ = self.git_service.commit_file(&user_path, &old_resolved, &format!("Renamed file (old): {}", old_name));
-        let _ = self.git_service.commit_file(&user_path, &new_resolved, &format!("Renamed file (new): {}", new_name));
+        let _ = self.git_service.commit_rename(
+            &user_path,
+            &old_resolved,
+            &new_resolved,
+            &format!("Renamed: {} -> {}", old_name, new_name),
+        );
 
-        let old_storage_path = format!("/{}", old_resolved);
         let new_storage_path = format!("/{}", new_resolved);
         let new_filename = new_resolved
             .split('/')
@@ -101,7 +128,12 @@ impl RenameUseCase {
             .unwrap_or(new_name)
             .to_string();
 
-        let db_meta = self.find_db_file.execute(user.id, &old_storage_path).await.ok().flatten();
+        let db_meta = self
+            .find_db_file
+            .execute(user.id, &old_storage_path)
+            .await
+            .ok()
+            .flatten();
 
         if let Some(meta) = db_meta {
             let _ = self
@@ -110,7 +142,10 @@ impl RenameUseCase {
                 .await;
 
             if is_dir {
-                let _ = self.update_path_prefix.execute(user.id, &old_storage_path, &new_storage_path).await;
+                let _ = self
+                    .update_path_prefix
+                    .execute(user.id, &old_storage_path, &new_storage_path)
+                    .await;
             }
         } else if stat.is_some() {
             let new_meta = DbFileMetadata {
@@ -119,7 +154,11 @@ impl RenameUseCase {
                 filename: new_filename,
                 storage_path: new_storage_path,
                 size_bytes: stat.as_ref().map_or(0, |(s, _)| *s) as i64,
-                mime_type: Some(if is_dir { "inode/directory".into() } else { "application/octet-stream".into() }),
+                mime_type: Some(if is_dir {
+                    "inode/directory".into()
+                } else {
+                    "application/octet-stream".into()
+                }),
                 checksum: None,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
