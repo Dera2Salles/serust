@@ -11,6 +11,7 @@ pub struct McpRegistry {
     file_service: Arc<FileService>,
     user_repo: Arc<dyn crate::database::interfaces::IUserRepository>,
     share_service: Arc<crate::share::service::ShareService>,
+    admin_repo: Arc<dyn crate::database::interfaces::IAdminRepository>,
 }
 
 impl McpRegistry {
@@ -18,11 +19,13 @@ impl McpRegistry {
         file_service: Arc<FileService>,
         user_repo: Arc<dyn crate::database::interfaces::IUserRepository>,
         share_service: Arc<crate::share::service::ShareService>,
+        admin_repo: Arc<dyn crate::database::interfaces::IAdminRepository>,
     ) -> Self {
         Self {
             file_service,
             user_repo,
             share_service,
+            admin_repo,
         }
     }
 
@@ -276,8 +279,10 @@ impl McpRegistry {
                 description: "Admin: List all registered users on the server.".into(),
                 input_schema: json!({
                     "type": "object",
-                    "properties": {},
-                    "required": []
+                    "properties": {
+                        "admin_username": { "type": "string", "description": "Authenticated admin username" }
+                    },
+                    "required": ["admin_username"]
                 }),
             },
             McpTool {
@@ -286,9 +291,10 @@ impl McpRegistry {
                 input_schema: json!({
                     "type": "object",
                     "properties": {
+                        "admin_username": { "type": "string", "description": "Authenticated admin username" },
                         "username": { "type": "string", "description": "Username of the account to delete" }
                     },
-                    "required": ["username"]
+                    "required": ["admin_username", "username"]
                 }),
             },
             McpTool {
@@ -297,10 +303,11 @@ impl McpRegistry {
                 input_schema: json!({
                     "type": "object",
                     "properties": {
+                        "admin_username": { "type": "string", "description": "Authenticated admin username" },
                         "username": { "type": "string", "description": "Username of the account" },
                         "is_active": { "type": "boolean", "description": "New status" }
                     },
-                    "required": ["username", "is_active"]
+                    "required": ["admin_username", "username", "is_active"]
                 }),
             },
             McpTool {
@@ -546,13 +553,13 @@ impl McpRegistry {
 
         let user = self.make_user(username).await;
 
-        let (dir, filename) = if path.contains('/') {
-            path.rsplit_once('/').unwrap()
+        let full_path = if path.starts_with('/') {
+            path.to_string()
         } else {
-            ("/", path)
+            format!("/{}", path)
         };
 
-        match self.file_service.download(&user, dir, filename).await {
+        match self.file_service.download(&user, "/", &full_path).await {
             Ok(data) => {
                 let text = String::from_utf8(data)
                     .unwrap_or_else(|_| "Binary data (cannot display as text)".into());
@@ -635,6 +642,14 @@ impl McpRegistry {
                 profile_pic_path: None,
             }
         }
+    }
+
+    async fn is_admin_user(&self, username: &str) -> bool {
+        let user = self.make_user(username).await;
+        if user.id.is_nil() {
+            return false;
+        }
+        self.admin_repo.is_admin(user.id).await.unwrap_or(false)
     }
 
     fn get_str<'a>(args: &'a Value, key: &str) -> Result<&'a str, String> {
@@ -1242,6 +1257,10 @@ impl McpRegistry {
     }
 
     async fn tool_revoke_share_link(&self, args: &Value) -> McpToolResult {
+        let username = match Self::get_str(args, "username") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
         let id_str = match Self::get_str(args, "id") {
             Ok(v) => v,
             Err(e) => return McpToolResult::error(e),
@@ -1250,6 +1269,20 @@ impl McpRegistry {
             Ok(v) => v,
             Err(_) => return McpToolResult::error("Invalid UUID format"),
         };
+
+        let user = self.make_user(username).await;
+        if user.id.is_nil() {
+            return McpToolResult::error("User not found");
+        }
+
+        match self.share_service.list_my_links(user.id).await {
+            Ok(links) => {
+                if !links.iter().any(|l| l.id == id) {
+                    return McpToolResult::error("Link not found or does not belong to you");
+                }
+            }
+            Err(e) => return McpToolResult::error(format!("Error verifying ownership: {}", e)),
+        }
 
         match self.share_service.revoke_link(id).await {
             Ok(_) => McpToolResult::success("Link revoked successfully."),
@@ -1258,6 +1291,10 @@ impl McpRegistry {
     }
 
     async fn tool_revoke_share_grant(&self, args: &Value) -> McpToolResult {
+        let username = match Self::get_str(args, "username") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
         let id_str = match Self::get_str(args, "id") {
             Ok(v) => v,
             Err(e) => return McpToolResult::error(e),
@@ -1267,13 +1304,35 @@ impl McpRegistry {
             Err(_) => return McpToolResult::error("Invalid UUID format"),
         };
 
+        let user = self.make_user(username).await;
+        if user.id.is_nil() {
+            return McpToolResult::error("User not found");
+        }
+
+        match self.share_service.list_my_grants(user.id).await {
+            Ok(grants) => {
+                if !grants.iter().any(|g| g.id == id) {
+                    return McpToolResult::error("Grant not found or does not belong to you");
+                }
+            }
+            Err(e) => return McpToolResult::error(format!("Error verifying ownership: {}", e)),
+        }
+
         match self.share_service.revoke_grant(id).await {
             Ok(_) => McpToolResult::success("Grant revoked successfully."),
             Err(e) => McpToolResult::error(format!("Error: {}", e)),
         }
     }
 
-    async fn tool_list_all_users(&self, _args: &Value) -> McpToolResult {
+    async fn tool_list_all_users(&self, args: &Value) -> McpToolResult {
+        let admin_username = match Self::get_str(args, "admin_username") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        if !self.is_admin_user(admin_username).await {
+            return McpToolResult::error("Forbidden: admin privileges required");
+        }
+
         match self.user_repo.list_all().await {
             Ok(users) => {
                 let list: Vec<Value> = users
@@ -1295,6 +1354,14 @@ impl McpRegistry {
     }
 
     async fn tool_delete_user(&self, args: &Value) -> McpToolResult {
+        let admin_username = match Self::get_str(args, "admin_username") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        if !self.is_admin_user(admin_username).await {
+            return McpToolResult::error("Forbidden: admin privileges required");
+        }
+
         let username = match Self::get_str(args, "username") {
             Ok(v) => v,
             Err(e) => return McpToolResult::error(e),
@@ -1314,14 +1381,22 @@ impl McpRegistry {
     }
 
     async fn tool_update_user_status(&self, args: &Value) -> McpToolResult {
+        let admin_username = match Self::get_str(args, "admin_username") {
+            Ok(v) => v,
+            Err(e) => return McpToolResult::error(e),
+        };
+        if !self.is_admin_user(admin_username).await {
+            return McpToolResult::error("Forbidden: admin privileges required");
+        }
+
         let username = match Self::get_str(args, "username") {
             Ok(v) => v,
             Err(e) => return McpToolResult::error(e),
         };
-        let is_active = args
-            .get("is_active")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true);
+        let is_active = match args.get("is_active").and_then(|v| v.as_bool()) {
+            Some(v) => v,
+            None => return McpToolResult::error("Missing required argument: is_active"),
+        };
 
         match self.user_repo.find_by_username(username).await {
             Ok(Some(mut user)) => {
@@ -1359,7 +1434,10 @@ impl McpRegistry {
             Ok(history) => {
                 let lines: Vec<String> = history
                     .into_iter()
-                    .map(|(hash, date, msg)| format!("- {} ({}) : {}", &hash[..8], date, msg))
+                    .map(|(hash, date, msg)| {
+                        let short = if hash.len() >= 8 { &hash[..8] } else { &hash };
+                        format!("- {} ({}) : {}", short, date, msg)
+                    })
                     .collect();
                 McpToolResult::success(format!(
                     "Versions for '{}':\n{}",
@@ -1398,7 +1476,7 @@ impl McpRegistry {
             Ok(_) => McpToolResult::success(format!(
                 "File '{}' restored to version {}.",
                 filename,
-                &hash[..8]
+                if hash.len() >= 8 { &hash[..8] } else { hash }
             )),
             Err(e) => McpToolResult::error(format!("Error: {}", e)),
         }
@@ -1431,7 +1509,7 @@ impl McpRegistry {
             Ok(diff) => McpToolResult::success(format!(
                 "Diff for '{}' against {}:\n{}",
                 filename,
-                &hash[..8],
+                if hash.len() >= 8 { &hash[..8] } else { hash },
                 diff
             )),
             Err(e) => McpToolResult::error(format!("Error: {}", e)),

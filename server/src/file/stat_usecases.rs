@@ -42,62 +42,61 @@ impl StatUseCase {
             return Ok(Some((0, true, None)));
         }
 
-        let (size, is_dir) = if let Some((owner, inner)) = PermissionChecker::parse_shared(&resolved) {
-            if inner.is_empty() {
-                let allowed = self
+        let (size, is_dir) =
+            if let Some((owner, inner)) = PermissionChecker::parse_shared(&resolved) {
+                if inner.is_empty() {
+                    let allowed = self
+                        .shares
+                        .owners_shared_with(&user.username)
+                        .await
+                        .into_iter()
+                        .any(|o| o == owner);
+                    if allowed {
+                        return Ok(Some((0, true, None)));
+                    } else {
+                        return Ok(None);
+                    }
+                }
+
+                if !self
                     .shares
-                    .owners_shared_with(&user.username)
+                    .can_discover(&user.username, &owner, &inner)
                     .await
-                    .into_iter()
-                    .any(|o| o == owner);
-                if allowed {
-                    return Ok(Some((0, true, None)));
-                } else {
+                {
                     return Ok(None);
                 }
-            }
+                match self.file_repo.stat(&owner, &inner).await? {
+                    Some(s) => s,
+                    None => return Ok(None),
+                }
+            } else {
+                let storage_path = format!("/{}", resolved);
+                if let Ok(Some(db_meta)) = self.find_db_file.execute(user.id, &storage_path).await {
+                    if db_meta.is_deleted {
+                        return Ok(None);
+                    }
+                }
 
-            if !self.shares.can_discover(&user.username, &owner, &inner).await {
-                return Ok(None);
-            }
-            match self.file_repo.stat(&owner, &inner).await? {
-                Some(s) => s,
-                None => return Ok(None),
+                match self.file_repo.stat(&user.username, &resolved).await? {
+                    Some(s) => s,
+                    None => return Ok(None),
+                }
+            };
+
+        // For shared files: checksum lookup requires resolving the owner's UUID,
+        // which is not available in this context (StatUseCase only holds the
+        // requesting user's data, not the owner's). Return None for shared file
+        // checksums rather than querying the DB with a path that can never match.
+        let is_shared_path = PermissionChecker::parse_shared(&resolved).is_some();
+        let checksum = if !is_dir && !is_shared_path {
+            let storage_path = format!("/{}", resolved);
+            match self.find_db_file.execute(user.id, &storage_path).await {
+                Ok(Some(db_meta)) => db_meta.checksum,
+                _ => None,
             }
         } else {
-            let storage_path = format!("/{}", resolved);
-            if let Ok(Some(db_meta)) = self.find_db_file.execute(user.id, &storage_path).await {
-                if db_meta.is_deleted {
-                    return Ok(None);
-                }
-            }
-
-            match self.file_repo.stat(&user.username, &resolved).await? {
-                Some(s) => s,
-                None => return Ok(None),
-            }
+            None
         };
-
-        let mut checksum = None;
-        if !is_dir {
-            let storage_path = if let Some((owner, inner)) = PermissionChecker::parse_shared(&resolved) {
-                format!("/shared/{}/{}", owner, inner)
-            } else {
-                format!("/{}", resolved)
-            };
-
-            let owner_id = if let Some((_owner, _)) = PermissionChecker::parse_shared(&resolved) {
-                None
-            } else {
-                Some(user.id)
-            };
-
-            if let Some(oid) = owner_id {
-                if let Ok(Some(db_meta)) = self.find_db_file.execute(oid, &storage_path).await {
-                    checksum = db_meta.checksum;
-                }
-            }
-        }
 
         Ok(Some((size, is_dir, checksum)))
     }

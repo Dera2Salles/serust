@@ -133,6 +133,60 @@ impl GitService {
         Ok(())
     }
 
+    /// Stages the removal of rel_path from the index and commits.
+    /// Use this instead of commit_file for delete operations so the file is
+    /// recorded as removed rather than added/modified in the git index.
+    pub fn commit_delete(
+        &self,
+        user_path: &Path,
+        rel_path: &str,
+        message: &str,
+    ) -> Result<(), DomainError> {
+        let repo = self.init_repository(user_path)?;
+        let mut index = repo
+            .index()
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+
+        // Stage removal of the path (ignore error if it wasn't tracked yet)
+        let _ = index.remove_path(Path::new(rel_path));
+        index
+            .write()
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+
+        let tree_id = index
+            .write_tree()
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+        let tree = repo
+            .find_tree(tree_id)
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+
+        let sig = Signature::now("AroSaina Server", "admin@arosaina.io")
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+
+        let parent_commit = match repo.head() {
+            Ok(head) => Some(
+                head.peel_to_commit()
+                    .map_err(|e| DomainError::Internal(e.to_string()))?,
+            ),
+            Err(_) => None,
+        };
+        let parents = match &parent_commit {
+            Some(c) => vec![c],
+            None => vec![],
+        };
+
+        repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+
+        debug!("Git delete commit: {} for {}", message, rel_path);
+
+        if self.bucket.is_some() {
+            let _ = self.sync_to_s3(user_path);
+        }
+
+        Ok(())
+    }
+
     /// Returns a list of commits affecting the specified file.
     pub fn get_history(
         &self,

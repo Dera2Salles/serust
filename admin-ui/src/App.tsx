@@ -14,6 +14,7 @@ import {
   Share2,
   ScrollText,
   Cpu,
+  Monitor,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -28,13 +29,21 @@ function App() {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   useEffect(() => {
-    const savedUser =
-      localStorage.getItem("admin_user") ||
-      sessionStorage.getItem("admin_user");
+    const savedUser = sessionStorage.getItem("admin_user");
     if (savedUser) {
-      setUser(JSON.parse(savedUser));
+      try {
+        const parsed = JSON.parse(savedUser);
+        setUser(parsed);
+      } catch {
+        // Corrupted storage — clear and continue as logged out
+        localStorage.removeItem("admin_user");
+        sessionStorage.removeItem("admin_user");
+      } finally {
+        setAuthLoading(false);
+      }
+    } else {
+      setAuthLoading(false);
     }
-    setAuthLoading(false);
   }, []);
 
   const handleLoginSuccess = (userData: any) => {
@@ -58,6 +67,7 @@ function App() {
     { id: "dashboard", label: "Console", icon: LayoutDashboard, group: "main" },
     { id: "system", label: "Système", icon: Cpu, group: "main" },
     { id: "users", label: "Utilisateurs", icon: Users, group: "main" },
+    { id: "sessions", label: "Sessions", icon: Monitor, group: "main" },
     { id: "shares", label: "Partages", icon: Share2, group: "data" },
     { id: "logs", label: "Journaux", icon: ScrollText, group: "data" },
     { id: "settings", label: "Paramètres", icon: Settings, group: "settings" },

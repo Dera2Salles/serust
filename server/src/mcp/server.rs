@@ -122,7 +122,16 @@ async fn handle_http(
     }
 
     if method == Method::GET && path == "/api/storage/stats" {
-        let username = extract_query_param(&query, "username").unwrap_or("alice");
+        let username = match extract_query_param(&query, "username") {
+            Some(u) if !u.is_empty() => u,
+            _ => {
+                return Ok(json_response(
+                    StatusCode::BAD_REQUEST,
+                    json!({"error": "Missing required query parameter: username"}),
+                    &cors_headers,
+                ))
+            }
+        };
         let user_repo = crate::database::user_repository::UserRepository::new(state.db.clone());
         let db_user = user_repo.find_by_username(username).await.unwrap_or(None);
         let user = crate::user::domain::User {
@@ -155,7 +164,16 @@ async fn handle_http(
     }
 
     if method == Method::GET && path.starts_with("/api/analytics") {
-        let username = extract_query_param(&query, "username").unwrap_or("alice");
+        let username = match extract_query_param(&query, "username") {
+            Some(u) if !u.is_empty() => u,
+            _ => {
+                return Ok(json_response(
+                    StatusCode::BAD_REQUEST,
+                    json!({"error": "Missing required query parameter: username"}),
+                    &cors_headers,
+                ))
+            }
+        };
         let days: i64 = extract_query_param(&query, "days")
             .and_then(|v| v.parse().ok())
             .unwrap_or(30);
@@ -210,11 +228,13 @@ async fn handle_http(
         let user_repo = crate::database::user_repository::UserRepository::new(state.db.clone());
         let db_user = match user_repo.find_by_username(username).await {
             Ok(Some(u)) => u,
-            _ => return Ok(json_response(
-                StatusCode::NOT_FOUND,
-                json!({ "error": "User not found" }),
-                &cors_headers,
-            )),
+            _ => {
+                return Ok(json_response(
+                    StatusCode::NOT_FOUND,
+                    json!({ "error": "User not found" }),
+                    &cors_headers,
+                ))
+            }
         };
 
         let ai_repo = crate::database::ai_repository::AiRepository::new(state.db.clone());
@@ -233,50 +253,71 @@ async fn handle_http(
         let user_repo = crate::database::user_repository::UserRepository::new(state.db.clone());
         let db_user = match user_repo.find_by_username(username).await {
             Ok(Some(u)) => u,
-            _ => return Ok(json_response(
-                StatusCode::NOT_FOUND,
-                json!({ "error": "User not found" }),
-                &cors_headers,
-            )),
+            _ => {
+                return Ok(json_response(
+                    StatusCode::NOT_FOUND,
+                    json!({ "error": "User not found" }),
+                    &cors_headers,
+                ))
+            }
         };
 
         let body_bytes = match req.collect().await {
             Ok(b) => b.to_bytes(),
-            Err(e) => return Ok(json_response(
-                StatusCode::BAD_REQUEST,
-                json!({ "error": format!("Failed to read body: {}", e) }),
-                &cors_headers,
-            )),
+            Err(e) => {
+                return Ok(json_response(
+                    StatusCode::BAD_REQUEST,
+                    json!({ "error": format!("Failed to read body: {}", e) }),
+                    &cors_headers,
+                ))
+            }
         };
 
         let chat_data: Value = match serde_json::from_slice(&body_bytes) {
             Ok(v) => v,
-            Err(_) => return Ok(json_response(
-                StatusCode::BAD_REQUEST,
-                json!({ "error": "Invalid JSON" }),
-                &cors_headers,
-            )),
+            Err(_) => {
+                return Ok(json_response(
+                    StatusCode::BAD_REQUEST,
+                    json!({ "error": "Invalid JSON" }),
+                    &cors_headers,
+                ))
+            }
         };
 
-        let id = chat_data["id"].as_str().map(|s| s.to_string()).unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let id = chat_data["id"]
+            .as_str()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let title = chat_data["title"].as_str().unwrap_or("New Chat");
 
         let ai_repo = crate::database::ai_repository::AiRepository::new(state.db.clone());
-        return Ok(match ai_repo.create_chat(&id, &db_user.id.to_string(), title).await {
-            Ok(chat) => json_response(StatusCode::CREATED, json!(chat), &cors_headers),
-            Err(e) => json_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                json!({ "error": e.to_string() }),
-                &cors_headers,
-            ),
-        });
+        return Ok(
+            match ai_repo
+                .create_chat(&id, &db_user.id.to_string(), title)
+                .await
+            {
+                Ok(chat) => json_response(StatusCode::CREATED, json!(chat), &cors_headers),
+                Err(e) => json_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    json!({ "error": e.to_string() }),
+                    &cors_headers,
+                ),
+            },
+        );
     }
 
-    if method == Method::DELETE && path.starts_with("/api/ai/chats/") && !path.ends_with("/messages") {
+    if method == Method::DELETE
+        && path.starts_with("/api/ai/chats/")
+        && !path.ends_with("/messages")
+    {
         let id = path.trim_start_matches("/api/ai/chats/");
         let ai_repo = crate::database::ai_repository::AiRepository::new(state.db.clone());
         return Ok(match ai_repo.delete_chat(id).await {
-            Ok(_) => json_response(StatusCode::OK, json!({ "status": "deleted" }), &cors_headers),
+            Ok(_) => json_response(
+                StatusCode::OK,
+                json!({ "status": "deleted" }),
+                &cors_headers,
+            ),
             Err(e) => json_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 json!({ "error": e.to_string() }),
@@ -286,7 +327,9 @@ async fn handle_http(
     }
 
     if method == Method::GET && path.starts_with("/api/ai/chats/") && path.ends_with("/messages") {
-        let chat_id = path.trim_start_matches("/api/ai/chats/").trim_end_matches("/messages");
+        let chat_id = path
+            .trim_start_matches("/api/ai/chats/")
+            .trim_end_matches("/messages");
         let ai_repo = crate::database::ai_repository::AiRepository::new(state.db.clone());
         return Ok(match ai_repo.list_messages(chat_id).await {
             Ok(messages) => json_response(StatusCode::OK, json!(messages), &cors_headers),
@@ -299,39 +342,50 @@ async fn handle_http(
     }
 
     if method == Method::POST && path.starts_with("/api/ai/chats/") && path.ends_with("/messages") {
-        let chat_id = path.trim_start_matches("/api/ai/chats/").trim_end_matches("/messages");
-        
+        let chat_id = path
+            .trim_start_matches("/api/ai/chats/")
+            .trim_end_matches("/messages");
+
         let body_bytes = match req.collect().await {
             Ok(b) => b.to_bytes(),
-            Err(e) => return Ok(json_response(
-                StatusCode::BAD_REQUEST,
-                json!({ "error": format!("Failed to read body: {}", e) }),
-                &cors_headers,
-            )),
+            Err(e) => {
+                return Ok(json_response(
+                    StatusCode::BAD_REQUEST,
+                    json!({ "error": format!("Failed to read body: {}", e) }),
+                    &cors_headers,
+                ))
+            }
         };
 
         let msg_data: Value = match serde_json::from_slice(&body_bytes) {
             Ok(v) => v,
-            Err(_) => return Ok(json_response(
-                StatusCode::BAD_REQUEST,
-                json!({ "error": "Invalid JSON" }),
-                &cors_headers,
-            )),
+            Err(_) => {
+                return Ok(json_response(
+                    StatusCode::BAD_REQUEST,
+                    json!({ "error": "Invalid JSON" }),
+                    &cors_headers,
+                ))
+            }
         };
 
-        let id = msg_data["id"].as_str().map(|s| s.to_string()).unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let id = msg_data["id"]
+            .as_str()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let role = msg_data["role"].as_str().unwrap_or("user");
         let text = msg_data["text"].as_str().unwrap_or("");
 
         let ai_repo = crate::database::ai_repository::AiRepository::new(state.db.clone());
-        return Ok(match ai_repo.create_message(&id, chat_id, role, text).await {
-            Ok(msg) => json_response(StatusCode::CREATED, json!(msg), &cors_headers),
-            Err(e) => json_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                json!({ "error": e.to_string() }),
-                &cors_headers,
-            ),
-        });
+        return Ok(
+            match ai_repo.create_message(&id, chat_id, role, text).await {
+                Ok(msg) => json_response(StatusCode::CREATED, json!(msg), &cors_headers),
+                Err(e) => json_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    json!({ "error": e.to_string() }),
+                    &cors_headers,
+                ),
+            },
+        );
     }
 
     if method == Method::POST && path == "/api/auth/register" {
@@ -379,6 +433,7 @@ async fn handle_http(
                 .auth_service
                 .register(
                     username, email, password, first_name, last_name, birth_date, location,
+                    false, // new users start inactive, pending approval
                 )
                 .await
             {
@@ -544,8 +599,10 @@ async fn handle_public_download(
         .await
         .unwrap_or(None);
 
-    if let (Some(max), Some(model)) = (link.max_reads, read_count_model) {
-        if model.read_count >= max {
+    let read_count = read_count_model.map_or(0, |m| m.read_count);
+
+    if let Some(max) = link.max_reads {
+        if read_count >= max {
             return json_response(
                 StatusCode::GONE,
                 json!({"error": "Maximum read count reached"}),
@@ -720,10 +777,12 @@ async fn dispatch_rpc(req: JsonRpcRequest, registry: &Arc<McpRegistry>) -> JsonR
 
         "resources/list" => {
             let params = req.params.unwrap_or(Value::Object(serde_json::Map::new()));
-            let username = params
-                .get("username")
-                .and_then(|v| v.as_str())
-                .unwrap_or("alice");
+            let username = match params.get("username").and_then(|v| v.as_str()) {
+                Some(u) if !u.is_empty() => u,
+                _ => {
+                    return JsonRpcResponse::err(id, -32602, "Missing required parameter: username")
+                }
+            };
             let resources = registry.list_resources(username).await;
             JsonRpcResponse::ok(id, json!({ "resources": resources }))
         }

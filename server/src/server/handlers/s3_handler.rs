@@ -84,10 +84,13 @@ async fn handle_request(
     if method == "GET" && segments.len() == 3 && segments[2] == ".profile_pic.jpg" {
         let target_username = segments[1];
         if target_username != user.username {
-            if let Ok(Some(other_user)) = auth.get_user_by_username(target_username).await {
+            // Profile pictures are intentionally public. We pass the target user's context
+            // only to resolve the correct storage path; access is restricted to
+            // ".profile_pic.jpg" specifically and cannot be exploited for arbitrary files.
+            if let Ok(Some(target_user)) = auth.get_user_by_username(target_username).await {
                 return handle_get_object(
                     &req,
-                    &other_user,
+                    &target_user,
                     ".profile_pic.jpg",
                     files,
                     logs.clone(),
@@ -111,7 +114,7 @@ async fn handle_request(
     match method.as_str() {
         "GET" => {
             if let Some(query) = req.uri().query() {
-                if query.contains("list-type=2") {
+                if query.split('&').any(|kv| kv == "list-type=2") {
                     return handle_list_objects(&user, &rel_path, files, shares.clone()).await;
                 }
                 if query.contains("shares=in") {
@@ -459,12 +462,22 @@ async fn handle_delete_object(
             *res.status_mut() = StatusCode::NO_CONTENT;
             Ok(res)
         }
-        Err(_) => {
-            let json_err = format!(r#"{{"error": "file_not_found"}}"#);
+        Err(e) => {
+            use crate::common::error::DomainError;
+            let (status, error_code) = match e {
+                DomainError::PermissionDenied => (StatusCode::FORBIDDEN, "permission_denied"),
+                DomainError::FileNotFound => (StatusCode::NOT_FOUND, "file_not_found"),
+                DomainError::UnsafePath => (StatusCode::BAD_REQUEST, "unsafe_path"),
+                DomainError::InvalidCredentials => {
+                    (StatusCode::UNAUTHORIZED, "invalid_credentials")
+                }
+                _ => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error"),
+            };
+            let json_err = format!(r#"{{"error": "{}"}}"#, error_code);
             let mut res = Response::new(Full::new(Bytes::from(json_err)));
             res.headers_mut()
                 .insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
-            *res.status_mut() = StatusCode::NOT_FOUND;
+            *res.status_mut() = status;
             Ok(res)
         }
     }
@@ -494,6 +507,7 @@ async fn handle_list_objects(
                 path_prefix
             ));
 
+            let grants = shares.list_incoming(&user.username).await;
             for (name, is_dir) in entries {
                 let mut can_read = true;
                 let mut can_write = true;
@@ -506,8 +520,7 @@ async fn handle_list_objects(
                     format!("{}/{}", path, name)
                 };
 
-                let grants = shares.list_incoming(&user.username).await;
-                for grant in grants {
+                for grant in &grants {
                     let share_path = if grant.path.starts_with('/') {
                         &grant.path[1..]
                     } else {

@@ -9,6 +9,7 @@ mod share;
 mod user;
 mod webdav;
 
+use dotenvy;
 use mcp::{
     registry::McpRegistry,
     server::{run_mcp_server, McpServerState},
@@ -16,7 +17,6 @@ use mcp::{
 use std::sync::Arc;
 use tracing::info;
 use tracing_subscriber::{prelude::*, EnvFilter};
-use dotenvy;
 
 pub async fn run_server() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
@@ -26,7 +26,11 @@ pub async fn run_server() -> anyhow::Result<()> {
     let _ = tracing_subscriber::registry()
         .with(EnvFilter::from_default_env().add_directive("info".parse()?))
         .with(tracing_subscriber::fmt::layer().with_writer(std::io::stdout))
-        .with(tracing_subscriber::fmt::layer().with_writer(non_blocking).with_ansi(false))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(non_blocking)
+                .with_ansi(false),
+        )
         .try_init();
 
     info!("Démarrage du framework TCP...");
@@ -37,7 +41,7 @@ pub async fn run_server() -> anyhow::Result<()> {
     let file_service = services.file_service;
     let log_access_usecase = services.log_access_usecase;
     let db = services.db;
-    
+
     let settings = crate::common::config::load_config();
     let session_registry = Arc::new(crate::common::session::SessionRegistry::new());
 
@@ -47,6 +51,9 @@ pub async fn run_server() -> anyhow::Result<()> {
             db.clone(),
         )),
         Arc::clone(&share_service),
+        Arc::new(crate::database::admin_repository::AdminRepository::new(
+            db.clone(),
+        )),
     ));
     let mcp_state = Arc::new(McpServerState {
         registry: Arc::clone(&mcp_registry),
@@ -56,7 +63,7 @@ pub async fn run_server() -> anyhow::Result<()> {
         db: db.clone(),
         sessions: Arc::clone(&session_registry),
     });
-    
+
     let mcp_addr = format!("0.0.0.0:{}", settings.mcp_port);
     tokio::spawn(async move {
         if let Err(e) = run_mcp_server(mcp_state, &mcp_addr).await {
@@ -81,7 +88,7 @@ pub async fn run_server() -> anyhow::Result<()> {
                     let files = Arc::clone(&webdav_files);
                     let sessions = Arc::clone(&webdav_sessions);
                     let session_id = uuid::Uuid::new_v4().to_string();
-                    
+
                     sessions.add_session(crate::common::session::ActiveSession {
                         id: session_id.clone(),
                         peer_addr: peer.to_string(),
@@ -107,14 +114,19 @@ pub async fn run_server() -> anyhow::Result<()> {
                                     async move {
                                         let method = req.method().to_string();
                                         let path = req.uri().path().to_string();
-                                        sessions_inner.update_last_command(&session_id_inner, format!("{} {}", method, path), None);
+                                        sessions_inner.update_last_command(
+                                            &session_id_inner,
+                                            format!("{} {}", method, path),
+                                            None,
+                                        );
                                         crate::webdav::handler::serve_webdav(
                                             req,
                                             auth,
                                             files,
                                             sessions_inner,
                                             session_id_inner,
-                                        ).await
+                                        )
+                                        .await
                                     }
                                 }),
                             )
@@ -175,7 +187,11 @@ pub async fn run_server() -> anyhow::Result<()> {
                             async move {
                                 let method = req.method().to_string();
                                 let path = req.uri().path().to_string();
-                                sessions_inner.update_last_command(&session_id_inner, format!("{} {}", method, path), None);
+                                sessions_inner.update_last_command(
+                                    &session_id_inner,
+                                    format!("{} {}", method, path),
+                                    None,
+                                );
                                 crate::server::handlers::s3_handler::serve_s3(
                                     req,
                                     auth,
@@ -184,7 +200,8 @@ pub async fn run_server() -> anyhow::Result<()> {
                                     logs,
                                     sessions_inner,
                                     session_id_inner,
-                                ).await
+                                )
+                                .await
                             }
                         }),
                     )

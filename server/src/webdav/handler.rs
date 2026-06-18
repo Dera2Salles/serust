@@ -309,6 +309,12 @@ async fn handle_get(
                                         header::HeaderValue::from_static("bytes"),
                                     );
                                     return Ok(res);
+                                } else {
+                                    let mut res = Response::new(Full::new(Bytes::from(
+                                        "Internal Server Error",
+                                    )));
+                                    *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+                                    return Ok(res);
                                 }
                             }
                             Err(_) => {}
@@ -373,7 +379,8 @@ fn parse_range(s: &str, size: u64) -> Option<Range> {
         end_str.parse::<u64>().ok()?
     };
 
-    if start >= size || end >= size || start > end {
+    let end = end.min(size - 1);
+    if start >= size || start > end {
         return None;
     }
 
@@ -386,6 +393,9 @@ async fn handle_put(
     path: &str,
     files: Arc<FileService>,
 ) -> Result<WebDavResponse, BoxError> {
+    // Check if resource already exists (for proper 201 vs 204 response)
+    let already_existed = files.stat(user, "/", path).await.ok().flatten().is_some();
+
     let body_bytes = req.into_body().collect().await?.to_bytes();
     let size = body_bytes.len() as u64;
 
@@ -395,7 +405,11 @@ async fn handle_put(
     {
         Ok(_) => {
             let mut res = Response::new(Full::new(Bytes::new()));
-            *res.status_mut() = StatusCode::CREATED;
+            *res.status_mut() = if already_existed {
+                StatusCode::NO_CONTENT
+            } else {
+                StatusCode::CREATED
+            };
             Ok(res)
         }
         Err(e) => {

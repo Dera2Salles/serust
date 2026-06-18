@@ -1,7 +1,7 @@
 use crate::common::error::DomainError;
 use crate::common::permission::{Permission, PermissionChecker};
 use crate::database::domain::DbFileMetadata;
-use crate::database::file_usecases::{CreateFileUseCase, FindFileByPathUseCase};
+use crate::database::file_usecases::{CreateFileUseCase, FindFileByPathUseCase, UpdateFileUseCase};
 
 use crate::file::git_service::GitService;
 use crate::file::interfaces::IFileRepository;
@@ -16,6 +16,7 @@ pub struct MkdirUseCase {
     shares: Arc<ShareService>,
     create_db_file: Arc<CreateFileUseCase>,
     find_db_file: Arc<FindFileByPathUseCase>,
+    update_db_file: Arc<UpdateFileUseCase>,
     git_service: Arc<GitService>,
 }
 
@@ -26,6 +27,7 @@ impl MkdirUseCase {
         shares: Arc<ShareService>,
         create_db_file: Arc<CreateFileUseCase>,
         find_db_file: Arc<FindFileByPathUseCase>,
+        update_db_file: Arc<UpdateFileUseCase>,
         git_service: Arc<GitService>,
     ) -> Self {
         Self {
@@ -34,6 +36,7 @@ impl MkdirUseCase {
             shares,
             create_db_file,
             find_db_file,
+            update_db_file,
             git_service,
         }
     }
@@ -53,20 +56,30 @@ impl MkdirUseCase {
                 .ok()
                 .flatten();
 
-            if existing.is_none() {
-                let db_entry = DbFileMetadata {
-                    id: uuid::Uuid::new_v4(),
-                    owner_id: user.id,
-                    filename: segment.to_string(),
-                    storage_path: current_path.clone(),
-                    size_bytes: 0,
-                    mime_type: Some("inode/directory".into()),
-                    checksum: None,
-                    created_at: chrono::Utc::now(),
-                    updated_at: chrono::Utc::now(),
-                    is_deleted: false,
-                };
-                let _ = self.create_db_file.execute(&db_entry).await;
+            match existing {
+                None => {
+                    let db_entry = DbFileMetadata {
+                        id: uuid::Uuid::new_v4(),
+                        owner_id: user.id,
+                        filename: segment.to_string(),
+                        storage_path: current_path.clone(),
+                        size_bytes: 0,
+                        mime_type: Some("inode/directory".into()),
+                        checksum: None,
+                        created_at: chrono::Utc::now(),
+                        updated_at: chrono::Utc::now(),
+                        is_deleted: false,
+                    };
+                    let _ = self.create_db_file.execute(&db_entry).await;
+                }
+                Some(ref e) if e.is_deleted => {
+                    // Reactivate the soft-deleted directory record
+                    let mut reactivated = e.clone();
+                    reactivated.is_deleted = false;
+                    reactivated.updated_at = chrono::Utc::now();
+                    let _ = self.update_db_file.execute(&reactivated).await;
+                }
+                _ => {} // already exists and not deleted, nothing to do
             }
         }
         Ok(())
@@ -93,7 +106,11 @@ impl MkdirUseCase {
             let res = self.file_repo.create_dir(&owner, &inner).await;
             if res.is_ok() {
                 let user_path = self.storage_root.join(&owner);
-                let _ = self.git_service.commit_file(&user_path, &inner, &format!("Created folder (shared): {}", inner));
+                let _ = self.git_service.commit_file(
+                    &user_path,
+                    &inner,
+                    &format!("Created folder (shared): {}", inner),
+                );
             }
             return res;
         }
@@ -104,10 +121,18 @@ impl MkdirUseCase {
             }
         }
 
+        if self.file_repo.dir_exists(&user.username, &resolved).await {
+            return Err(DomainError::AlreadyExists);
+        }
+
         self.file_repo.create_dir(&user.username, &resolved).await?;
 
         let user_path = self.storage_root.join(&user.username);
-        let _ = self.git_service.commit_file(&user_path, &resolved, &format!("Created folder: {}", dirname));
+        let _ = self.git_service.commit_file(
+            &user_path,
+            &resolved,
+            &format!("Created folder: {}", dirname),
+        );
 
         self.ensure_db_parents(user, &resolved).await?;
 
