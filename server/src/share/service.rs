@@ -132,25 +132,92 @@ impl ShareService {
             existing.can_reshare = can_reshare;
             existing.granted_by = granted_by.to_string();
             existing.expires_at = expires_at;
-            return self.repo.replace_all(grants).await;
+            self.repo.replace_all(grants).await?;
+        } else {
+            self.repo
+                .push(ShareGrant {
+                    owner: owner.to_string(),
+                    path: resolved.clone(),
+                    grantee: grantee.to_string(),
+                    can_read,
+                    can_write,
+                    can_download,
+                    remaining_reads,
+                    remaining_writes,
+                    remaining_downloads,
+                    can_reshare,
+                    granted_by: granted_by.to_string(),
+                    expires_at,
+                })
+                .await?;
         }
 
-        self.repo
-            .push(ShareGrant {
-                owner: owner.to_string(),
-                path: resolved,
-                grantee: grantee.to_string(),
+        // Sync to DB so that SQL permission checks (can_read / can_write) reflect
+        // this grant.  If the file or either user is not yet in the DB the insert
+        // is skipped silently — the JSON store remains the authoritative source
+        // for legacy paths until migration is complete.
+        let storage_path = if resolved.starts_with('/') {
+            resolved.clone()
+        } else {
+            format!("/{}", resolved)
+        };
+        let db_row = self
+            .db
+            .connection
+            .query_one(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"SELECT f.id AS file_id, u_grantor.id AS grantor_uuid, u_grantee.id AS grantee_uuid
+                   FROM files f
+                   JOIN users u_owner  ON u_owner.id  = f.owner_id
+                   JOIN users u_grantor ON u_grantor.username = $1
+                   JOIN users u_grantee ON u_grantee.username = $2
+                   WHERE u_owner.username = $3 AND f.storage_path = $4 AND f.is_deleted = FALSE"#,
+                vec![
+                    granted_by.into(),
+                    grantee.into(),
+                    owner.into(),
+                    storage_path.into(),
+                ],
+            ))
+            .await
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+
+        if let Some(row) = db_row {
+            let file_id_str: String = row
+                .try_get::<String>("", "file_id")
+                .map_err(|e| DomainError::Internal(e.to_string()))?;
+            let grantor_uuid_str: String = row
+                .try_get::<String>("", "grantor_uuid")
+                .map_err(|e| DomainError::Internal(e.to_string()))?;
+            let grantee_uuid_str: String = row
+                .try_get::<String>("", "grantee_uuid")
+                .map_err(|e| DomainError::Internal(e.to_string()))?;
+            let file_id = uuid::Uuid::parse_str(&file_id_str)
+                .map_err(|e| DomainError::Internal(e.to_string()))?;
+            let grantor_uuid = uuid::Uuid::parse_str(&grantor_uuid_str)
+                .map_err(|e| DomainError::Internal(e.to_string()))?;
+            let grantee_uuid = uuid::Uuid::parse_str(&grantee_uuid_str)
+                .map_err(|e| DomainError::Internal(e.to_string()))?;
+            let db_grant = DbShareGrant {
+                id: uuid::Uuid::new_v4(),
+                file_id,
+                granted_by: grantor_uuid,
+                granted_to: grantee_uuid,
                 can_read,
                 can_write,
-                can_download,
-                remaining_reads,
-                remaining_writes,
-                remaining_downloads,
                 can_reshare,
-                granted_by: granted_by.to_string(),
-                expires_at,
-            })
-            .await
+                max_reads: remaining_reads.map(|r| r as i64),
+                expires_at: expires_at
+                    .and_then(|ts| chrono::DateTime::from_timestamp(ts as i64, 0)),
+                granted_at: chrono::Utc::now(),
+            };
+            self.create_grant_usecase
+                .execute(&db_grant)
+                .await
+                .map_err(|e| DomainError::Internal(e.to_string()))?;
+        }
+
+        Ok(())
     }
 
     #[allow(dead_code)]
@@ -267,36 +334,34 @@ impl ShareService {
         .unwrap_or_default();
 
         rows.into_iter()
-            .map(|r| {
-                ShareGrant {
-                    owner: r
-                        .try_get::<String>("", "owner_username")
-                        .unwrap_or_default(),
-                    path: r
-                        .try_get::<String>("", "storage_path")
-                        .unwrap_or_default()
-                        .trim_start_matches('/')
-                        .to_string(),
-                    grantee: grantee_username.to_string(),
-                    can_read: r.try_get::<bool>("", "can_read").unwrap_or(false),
-                    can_write: r.try_get::<bool>("", "can_write").unwrap_or(false),
-                    can_download: true, 
-                    remaining_reads: r
-                        .try_get::<Option<i64>>("", "reads_remaining")
-                        .unwrap_or(None)
-                        .map(|v| v as u64),
-                    remaining_writes: None,
-                    remaining_downloads: None,
-                    can_reshare: false,
-                    granted_by: r
-                        .try_get::<Option<String>>("", "grantor_username")
-                        .unwrap_or_else(|_| None)
-                        .unwrap_or_else(|| {
-                            r.try_get::<String>("", "owner_username")
-                                .unwrap_or_default()
-                        }),
-                    expires_at: None,
-                }
+            .map(|r| ShareGrant {
+                owner: r
+                    .try_get::<String>("", "owner_username")
+                    .unwrap_or_default(),
+                path: r
+                    .try_get::<String>("", "storage_path")
+                    .unwrap_or_default()
+                    .trim_start_matches('/')
+                    .to_string(),
+                grantee: grantee_username.to_string(),
+                can_read: r.try_get::<bool>("", "can_read").unwrap_or(false),
+                can_write: r.try_get::<bool>("", "can_write").unwrap_or(false),
+                can_download: r.try_get::<bool>("", "can_read").unwrap_or(false),
+                remaining_reads: r
+                    .try_get::<Option<i64>>("", "reads_remaining")
+                    .unwrap_or(None)
+                    .map(|v| v as u64),
+                remaining_writes: None,
+                remaining_downloads: None,
+                can_reshare: false,
+                granted_by: r
+                    .try_get::<Option<String>>("", "grantor_username")
+                    .unwrap_or_else(|_| None)
+                    .unwrap_or_else(|| {
+                        r.try_get::<String>("", "owner_username")
+                            .unwrap_or_default()
+                    }),
+                expires_at: None,
             })
             .collect()
     }
@@ -449,7 +514,23 @@ impl ShareService {
     }
 
     pub async fn can_download(&self, actor: &str, owner: &str, owner_rel_path: &str) -> bool {
-        self.can_read(actor, owner, owner_rel_path).await
+        if actor == owner {
+            return true;
+        }
+        // Download requires read access; the DB check enforces validity and expiry.
+        if !self.can_read(actor, owner, owner_rel_path).await {
+            return false;
+        }
+        // The DB schema has no dedicated can_download column, so we look up the
+        // explicit flag from the JSON grant store.
+        let path_norm = owner_rel_path.trim_start_matches('/');
+        let grants = self.repo.all().await;
+        grants.iter().any(|g| {
+            g.owner == owner && g.grantee == actor && g.can_download && {
+                let stored = g.path.trim_start_matches('/');
+                stored == path_norm || path_norm.starts_with(&format!("{}/", stored))
+            }
+        })
     }
 
     pub async fn consume_read(
@@ -519,10 +600,66 @@ impl ShareService {
 
     pub async fn consume_write(
         &self,
-        _actor: &str,
-        _owner: &str,
-        _owner_rel_path: &str,
+        actor: &str,
+        owner: &str,
+        owner_rel_path: &str,
     ) -> Result<(), DomainError> {
+        if actor == owner {
+            return Ok(());
+        }
+        let storage_path = if owner_rel_path.starts_with('/') {
+            owner_rel_path.to_string()
+        } else {
+            format!("/{}", owner_rel_path)
+        };
+        let row = self.db.connection.query_one(
+            Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"SELECT p.file_id, p.grant_id FROM v_effective_permissions p
+                 JOIN files f ON f.id = p.file_id
+                 JOIN users u_owner ON u_owner.id = f.owner_id
+                 JOIN users u_actor ON u_actor.id = p.user_id
+                 WHERE u_actor.username = $1 AND u_owner.username = $2 AND f.storage_path = $3 AND p.can_write = TRUE AND p.is_valid = TRUE"#,
+                vec![actor.into(), owner.into(), storage_path.into()],
+            )
+        )
+        .await
+        .map_err(|e| DomainError::Internal(e.to_string()))?;
+
+        if let Some(r) = row {
+            let file_id: String = r
+                .try_get::<String>("", "file_id")
+                .map_err(|e| DomainError::Internal(e.to_string()))?;
+            let grant_id: Option<String> = r
+                .try_get::<Option<String>>("", "grant_id")
+                .map_err(|e| DomainError::Internal(e.to_string()))?;
+
+            let actor_model = users::Entity::find()
+                .filter(users::Column::Username.eq(actor))
+                .one(&self.db.connection)
+                .await
+                .map_err(|e| DomainError::Internal(e.to_string()))?
+                .ok_or(DomainError::Internal("Actor not found".to_string()))?;
+            let actor_id: String = actor_model.id;
+
+            let active_model = access_log::ActiveModel {
+                file_id: Set(file_id),
+                accessed_by: Set(Some(actor_id)),
+                share_link_id: Set(None),
+                grant_id: Set(grant_id),
+                action: Set(Some("write".to_string())),
+                accessed_at: Set(chrono::Utc::now().into()),
+                ip_address: Set(None),
+                user_agent: Set(None),
+                bytes_transferred: Set(None),
+                ..Default::default()
+            };
+            access_log::Entity::insert(active_model)
+                .exec(&self.db.connection)
+                .await
+                .map_err(|e| DomainError::Internal(e.to_string()))?;
+        }
+
         Ok(())
     }
 

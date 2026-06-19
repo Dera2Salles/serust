@@ -1,7 +1,10 @@
 use crate::common::error::DomainError;
 use crate::common::permission::{Permission, PermissionChecker};
 use crate::database::domain::DbFileMetadata;
-use crate::database::file_usecases::{CreateFileUseCase, FindFileByPathUseCase, SoftDeleteFileDbUseCase};
+use crate::database::file_usecases::{
+    CreateFileUseCase, FindFileByPathUseCase, SoftDeleteFileDbUseCase,
+};
+use crate::database::user_usecases::FindUserUseCase;
 use crate::file::git_service::GitService;
 use crate::file::interfaces::IFileRepository;
 use crate::share::service::ShareService;
@@ -17,6 +20,7 @@ pub struct DeleteUseCase {
     create_db_file: Arc<CreateFileUseCase>,
     soft_delete_db_file: Arc<SoftDeleteFileDbUseCase>,
     git_service: Arc<GitService>,
+    find_user: Arc<FindUserUseCase>,
 }
 
 impl DeleteUseCase {
@@ -28,6 +32,7 @@ impl DeleteUseCase {
         create_db_file: Arc<CreateFileUseCase>,
         soft_delete_db_file: Arc<SoftDeleteFileDbUseCase>,
         git_service: Arc<GitService>,
+        find_user: Arc<FindUserUseCase>,
     ) -> Self {
         Self {
             storage_root,
@@ -37,6 +42,7 @@ impl DeleteUseCase {
             create_db_file,
             soft_delete_db_file,
             git_service,
+            find_user,
         }
     }
 
@@ -54,8 +60,12 @@ impl DeleteUseCase {
             self.shares
                 .consume_write(&user.username, &owner, &inner)
                 .await?;
-            
-            let is_dir = self.file_repo.stat(&owner, &inner).await?.map_or(false, |(_, d)| d);
+
+            let is_dir = self
+                .file_repo
+                .stat(&owner, &inner)
+                .await?
+                .map_or(false, |(_, d)| d);
 
             let res = if is_dir {
                 self.file_repo.remove_dir(&owner, &inner).await
@@ -65,7 +75,27 @@ impl DeleteUseCase {
 
             if res.is_ok() {
                 let user_path = self.storage_root.join(&owner);
-                let _ = self.git_service.commit_file(&user_path, &inner, &format!("Deleted {} (shared): {}", if is_dir { "folder" } else { "file" }, inner));
+                let _ = self.git_service.commit_delete(
+                    &user_path,
+                    &inner,
+                    &format!(
+                        "Deleted {} (shared): {}",
+                        if is_dir { "folder" } else { "file" },
+                        inner
+                    ),
+                );
+
+                // Soft-delete the owner's DB record now that the physical file is gone
+                if let Ok(Some(owner_user)) = self.find_user.execute(&owner).await {
+                    let owner_storage_path = format!("/{}", inner);
+                    if let Ok(Some(meta)) = self
+                        .find_db_file
+                        .execute(owner_user.id, &owner_storage_path)
+                        .await
+                    {
+                        let _ = self.soft_delete_db_file.execute(meta.id).await;
+                    }
+                }
             }
             return res;
         }
@@ -79,15 +109,25 @@ impl DeleteUseCase {
             }
         } else if stat.is_none() {
             let storage_path = format!("/{}", resolved);
-            if self.find_db_file.execute(user.id, &storage_path).await.map_or(true, |o| o.is_none()) {
+            if self
+                .find_db_file
+                .execute(user.id, &storage_path)
+                .await
+                .map_or(true, |o| o.is_none())
+            {
                 return Err(DomainError::FileNotFound);
             }
         }
 
         let storage_path = format!("/{}", resolved);
-        
-        let db_meta = self.find_db_file.execute(user.id, &storage_path).await.ok().flatten();
-        
+
+        let db_meta = self
+            .find_db_file
+            .execute(user.id, &storage_path)
+            .await
+            .ok()
+            .flatten();
+
         if db_meta.is_none() && stat.is_some() {
             let new_meta = DbFileMetadata {
                 id: uuid::Uuid::new_v4(),
@@ -95,7 +135,11 @@ impl DeleteUseCase {
                 filename: resolved.split('/').last().unwrap_or(filename).to_string(),
                 storage_path: storage_path.clone(),
                 size_bytes: stat.as_ref().map_or(0, |(s, _)| *s) as i64,
-                mime_type: Some(if is_dir { "inode/directory".into() } else { "application/octet-stream".into() }),
+                mime_type: Some(if is_dir {
+                    "inode/directory".into()
+                } else {
+                    "application/octet-stream".into()
+                }),
                 checksum: None,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -105,7 +149,15 @@ impl DeleteUseCase {
         }
 
         let user_path = self.storage_root.join(&user.username);
-        let _ = self.git_service.commit_file(&user_path, &resolved, &format!("Soft deleting {}: {}", if is_dir { "folder" } else { "file" }, filename));
+        let _ = self.git_service.commit_delete(
+            &user_path,
+            &resolved,
+            &format!(
+                "Deleted {}: {}",
+                if is_dir { "folder" } else { "file" },
+                filename
+            ),
+        );
 
         if let Ok(Some(meta)) = self.find_db_file.execute(user.id, &storage_path).await {
             self.soft_delete_db_file

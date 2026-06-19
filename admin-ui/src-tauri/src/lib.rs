@@ -438,6 +438,12 @@ fn save_global_settings(settings: GlobalSettings) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn clear_server_logs() -> Result<(), String> {
+    let path = "../../server.log";
+    std::fs::write(path, "").map_err(|e| format!("Failed to clear logs: {}", e))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let server_state = Arc::new(Mutex::new(ServerState::default()));
@@ -451,6 +457,7 @@ pub fn run() {
             get_server_status,
             get_system_info,
             read_server_logs,
+            clear_server_logs,
             get_users_from_db,
             create_user_db,
             update_user_db,

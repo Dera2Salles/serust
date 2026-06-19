@@ -3,6 +3,7 @@ use crate::file::service::FileService;
 use crate::user::domain::User;
 use crate::user::service::AuthService;
 use bytes::Bytes;
+use chrono::Utc;
 use http_body_util::{BodyExt, Full};
 use hyper::{body::Incoming, header, Request, Response, StatusCode};
 use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
@@ -29,8 +30,10 @@ pub async fn serve_webdav(
     req: Request<Incoming>,
     auth: Arc<AuthService>,
     files: Arc<FileService>,
+    sessions: crate::common::session::SharedSessionRegistry,
+    session_id: String,
 ) -> Result<WebDavResponse, Infallible> {
-    match handle_request(req, auth, files).await {
+    match handle_request(req, auth, files, sessions, session_id).await {
         Ok(response) => Ok(response),
         Err(e) => {
             error!("WebDAV error: {:?}", e);
@@ -45,9 +48,18 @@ async fn handle_request(
     req: Request<Incoming>,
     auth: Arc<AuthService>,
     files: Arc<FileService>,
+    sessions: crate::common::session::SharedSessionRegistry,
+    session_id: String,
 ) -> Result<WebDavResponse, BoxError> {
     let user = match authenticate(&req, auth).await {
-        Ok(u) => u,
+        Ok(u) => {
+            sessions.update_last_command(
+                &session_id,
+                format!("{} {}", req.method(), req.uri().path()),
+                Some(u.username.clone()),
+            );
+            u
+        }
         Err(_) => {
             let mut res = Response::new(Full::new(Bytes::from("Unauthorized")));
             *res.status_mut() = StatusCode::UNAUTHORIZED;
@@ -74,6 +86,7 @@ async fn handle_request(
         "PUT" => handle_put(req, &user, &path, files).await,
         "MKCOL" => handle_mkcol(&user, &path, files).await,
         "DELETE" => handle_delete(&user, &path, files).await,
+        "MOVE" => handle_move(req, &user, &path, files).await,
         _ => {
             let mut res = Response::new(Full::new(Bytes::from("Method Not Allowed")));
             *res.status_mut() = StatusCode::METHOD_NOT_ALLOWED;
@@ -111,14 +124,12 @@ fn handle_options() -> Result<WebDavResponse, BoxError> {
     let mut res = Response::new(Full::new(Bytes::new()));
     res.headers_mut().insert(
         header::ALLOW,
-        "OPTIONS, PROPFIND, GET, HEAD, PUT, MKCOL, DELETE, COPY, MOVE"
+        "OPTIONS, PROPFIND, GET, HEAD, PUT, MKCOL, DELETE, MOVE"
             .parse()
             .unwrap(),
     );
-    res.headers_mut().insert(
-        header::HeaderName::from_static("dav"),
-        "1".parse().unwrap(),
-    );
+    res.headers_mut()
+        .insert(header::HeaderName::from_static("dav"), "1".parse().unwrap());
     res.headers_mut().insert(
         header::HeaderName::from_static("ms-author-via"),
         "DAV".parse().unwrap(),
@@ -168,7 +179,10 @@ async fn handle_propfind(
         );
 
         if !displayname.is_empty() {
-            entry.push_str(&format!("      <D:displayname>{}</D:displayname>\n", displayname));
+            entry.push_str(&format!(
+                "      <D:displayname>{}</D:displayname>\n",
+                displayname
+            ));
         }
 
         if p_is_dir {
@@ -181,8 +195,11 @@ async fn handle_propfind(
             ));
             entry.push_str("      <D:getcontenttype>application/octet-stream</D:getcontenttype>\n");
         }
-        
-        entry.push_str("      <D:getlastmodified>Thu, 01 Jan 1970 00:00:00 GMT</D:getlastmodified>\n");
+
+        entry.push_str(&format!(
+            "      <D:getlastmodified>{}</D:getlastmodified>\n",
+            Utc::now().format("%a, %d %b %Y %H:%M:%S GMT")
+        ));
         entry.push_str("      <D:lockdiscovery/>\n");
         entry.push_str("      <D:supportedlock/>\n");
 
@@ -260,8 +277,12 @@ async fn handle_get(
                         match files.get_reader(user, "/", path).await {
                             Ok(mut file) => {
                                 use tokio::io::AsyncSeekExt;
-                                if let Err(_) = file.seek(std::io::SeekFrom::Start(range.start)).await {
-                                    let mut res = Response::new(Full::new(Bytes::from("Requested Range Not Satisfiable")));
+                                if let Err(_) =
+                                    file.seek(std::io::SeekFrom::Start(range.start)).await
+                                {
+                                    let mut res = Response::new(Full::new(Bytes::from(
+                                        "Requested Range Not Satisfiable",
+                                    )));
                                     *res.status_mut() = StatusCode::RANGE_NOT_SATISFIABLE;
                                     return Ok(res);
                                 }
@@ -288,6 +309,12 @@ async fn handle_get(
                                         header::HeaderValue::from_static("bytes"),
                                     );
                                     return Ok(res);
+                                } else {
+                                    let mut res = Response::new(Full::new(Bytes::from(
+                                        "Internal Server Error",
+                                    )));
+                                    *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+                                    return Ok(res);
                                 }
                             }
                             Err(_) => {}
@@ -303,10 +330,8 @@ async fn handle_get(
                     } else {
                         Bytes::from(data)
                     })));
-                    res.headers_mut().insert(
-                        header::CONTENT_LENGTH,
-                        header::HeaderValue::from(size),
-                    );
+                    res.headers_mut()
+                        .insert(header::CONTENT_LENGTH, header::HeaderValue::from(size));
                     res.headers_mut().insert(
                         header::ACCEPT_RANGES,
                         header::HeaderValue::from_static("bytes"),
@@ -354,7 +379,8 @@ fn parse_range(s: &str, size: u64) -> Option<Range> {
         end_str.parse::<u64>().ok()?
     };
 
-    if start >= size || end >= size || start > end {
+    let end = end.min(size - 1);
+    if start >= size || start > end {
         return None;
     }
 
@@ -367,16 +393,23 @@ async fn handle_put(
     path: &str,
     files: Arc<FileService>,
 ) -> Result<WebDavResponse, BoxError> {
+    // Check if resource already exists (for proper 201 vs 204 response)
+    let already_existed = files.stat(user, "/", path).await.ok().flatten().is_some();
+
     let body_bytes = req.into_body().collect().await?.to_bytes();
     let size = body_bytes.len() as u64;
 
     match files
-        .upload(user, "/", path, size, body_bytes.to_vec())
+        .upload(user, "/", path, size, body_bytes.to_vec(), true)
         .await
     {
         Ok(_) => {
             let mut res = Response::new(Full::new(Bytes::new()));
-            *res.status_mut() = StatusCode::CREATED;
+            *res.status_mut() = if already_existed {
+                StatusCode::NO_CONTENT
+            } else {
+                StatusCode::CREATED
+            };
             Ok(res)
         }
         Err(e) => {
@@ -425,6 +458,101 @@ async fn handle_delete(
         }
         Err(e) => {
             error!("DELETE failed: {:?}", e);
+            let mut res = Response::new(Full::new(Bytes::from("Internal Server Error")));
+            *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+            Ok(res)
+        }
+    }
+}
+
+async fn handle_move(
+    req: Request<Incoming>,
+    user: &User,
+    path: &str,
+    files: Arc<FileService>,
+) -> Result<WebDavResponse, BoxError> {
+    // Destination header is required for MOVE
+    let dest_raw = match req
+        .headers()
+        .get("Destination")
+        .and_then(|v| v.to_str().ok())
+    {
+        Some(v) => v.to_string(),
+        None => {
+            let mut res = Response::new(Full::new(Bytes::from(
+                "Bad Request: missing Destination header",
+            )));
+            *res.status_mut() = StatusCode::BAD_REQUEST;
+            return Ok(res);
+        }
+    };
+
+    // Strip scheme://host[:port] prefix to obtain only the path
+    let dest_path_encoded = if let Some(after_scheme) = dest_raw
+        .strip_prefix("https://")
+        .or_else(|| dest_raw.strip_prefix("http://"))
+    {
+        match after_scheme.find('/') {
+            Some(slash) => after_scheme[slash..].to_string(),
+            None => "/".to_string(),
+        }
+    } else {
+        dest_raw.clone()
+    };
+
+    let dest_path = percent_encoding::percent_decode_str(&dest_path_encoded)
+        .decode_utf8_lossy()
+        .to_string();
+
+    // Overwrite: T (default) means replace destination; F means fail if destination exists
+    let overwrite = req
+        .headers()
+        .get("Overwrite")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| !v.eq_ignore_ascii_case("F"))
+        .unwrap_or(true);
+
+    let dest_exists = files
+        .stat(user, "/", &dest_path)
+        .await
+        .ok()
+        .flatten()
+        .is_some();
+
+    if dest_exists && !overwrite {
+        let mut res = Response::new(Full::new(Bytes::from("Precondition Failed")));
+        *res.status_mut() = StatusCode::PRECONDITION_FAILED;
+        return Ok(res);
+    }
+
+    match files.rename(user, "/", path, &dest_path, overwrite).await {
+        Ok(_) => {
+            let mut res = Response::new(Full::new(Bytes::new()));
+            // 201 Created when destination did not previously exist, 204 No Content when it did
+            *res.status_mut() = if dest_exists {
+                StatusCode::NO_CONTENT
+            } else {
+                StatusCode::CREATED
+            };
+            Ok(res)
+        }
+        Err(DomainError::FileNotFound) => {
+            let mut res = Response::new(Full::new(Bytes::from("Not Found")));
+            *res.status_mut() = StatusCode::NOT_FOUND;
+            Ok(res)
+        }
+        Err(DomainError::PermissionDenied) => {
+            let mut res = Response::new(Full::new(Bytes::from("Forbidden")));
+            *res.status_mut() = StatusCode::FORBIDDEN;
+            Ok(res)
+        }
+        Err(DomainError::AlreadyExists) => {
+            let mut res = Response::new(Full::new(Bytes::from("Conflict")));
+            *res.status_mut() = StatusCode::CONFLICT;
+            Ok(res)
+        }
+        Err(e) => {
+            error!("WebDAV MOVE failed: {:?}", e);
             let mut res = Response::new(Full::new(Bytes::from("Internal Server Error")));
             *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
             Ok(res)

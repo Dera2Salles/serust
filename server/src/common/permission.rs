@@ -9,7 +9,12 @@ pub enum Permission {
 pub struct PermissionChecker;
 
 impl PermissionChecker {
-    pub fn can_access(user: &User, file_owner: &str, _permission: &Permission) -> bool {
+    /// Returns true if `user` may access a resource owned by `file_owner`.
+    ///
+    /// Currently, both Read and Write access require ownership.
+    /// If an admin/role system is introduced, differentiate here.
+    pub fn can_access(user: &User, file_owner: &str, permission: &Permission) -> bool {
+        let _ = permission; // reserved for future role-based differentiation
         user.username == file_owner
     }
 

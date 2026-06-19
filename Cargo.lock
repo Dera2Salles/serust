@@ -2571,6 +2571,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "kajy"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "hex",
+ "sea-orm",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "sysinfo",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-opener",
+ "tcp_file_server",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "keyboard-types"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5161,26 +5181,6 @@ dependencies = [
  "webview2-com",
  "window-vibrancy",
  "windows 0.61.3",
-]
-
-[[package]]
-name = "tauri-app"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "hex",
- "sea-orm",
- "serde",
- "serde_json",
- "sha2",
- "sqlx",
- "sysinfo",
- "tauri",
- "tauri-build",
- "tauri-plugin-opener",
- "tcp_file_server",
- "tokio",
- "uuid",
 ]
 
 [[package]]

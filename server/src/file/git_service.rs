@@ -30,19 +30,32 @@ impl GitService {
         message: &str,
     ) -> Result<(), DomainError> {
         let repo = self.init_repository(user_path)?;
-        let mut index = repo.index().map_err(|e| DomainError::Internal(e.to_string()))?;
-        
-        index.add_path(Path::new(rel_path)).map_err(|e| DomainError::Internal(e.to_string()))?;
-        index.write().map_err(|e| DomainError::Internal(e.to_string()))?;
+        let mut index = repo
+            .index()
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
 
-        let tree_id = index.write_tree().map_err(|e| DomainError::Internal(e.to_string()))?;
-        let tree = repo.find_tree(tree_id).map_err(|e| DomainError::Internal(e.to_string()))?;
+        index
+            .add_path(Path::new(rel_path))
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+        index
+            .write()
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+
+        let tree_id = index
+            .write_tree()
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+        let tree = repo
+            .find_tree(tree_id)
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
 
         let sig = Signature::now("AroSaina Server", "admin@arosaina.io")
             .map_err(|e| DomainError::Internal(e.to_string()))?;
 
         let parent_commit = match repo.head() {
-            Ok(head) => Some(head.peel_to_commit().map_err(|e| DomainError::Internal(e.to_string()))?),
+            Ok(head) => Some(
+                head.peel_to_commit()
+                    .map_err(|e| DomainError::Internal(e.to_string()))?,
+            ),
             Err(_) => None,
         };
 
@@ -51,16 +64,121 @@ impl GitService {
             None => vec![],
         };
 
-        repo.commit(
-            Some("HEAD"),
-            &sig,
-            &sig,
-            message,
-            &tree,
-            &parents,
-        ).map_err(|e| DomainError::Internal(e.to_string()))?;
+        repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
 
         debug!("Git commit successful: {} for {}", message, rel_path);
+
+        if self.bucket.is_some() {
+            let _ = self.sync_to_s3(user_path);
+        }
+
+        Ok(())
+    }
+
+    /// Stages the removal of old_rel_path and the addition of new_rel_path, then commits.
+    /// Use this instead of two separate commit_file calls for file renames/moves.
+    pub fn commit_rename(
+        &self,
+        user_path: &Path,
+        old_rel_path: &str,
+        new_rel_path: &str,
+        message: &str,
+    ) -> Result<(), DomainError> {
+        let repo = self.init_repository(user_path)?;
+        let mut index = repo
+            .index()
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+
+        // Stage removal of old path (ignore error if it wasn't tracked yet)
+        let _ = index.remove_path(Path::new(old_rel_path));
+        // Stage addition of new path (now exists on disk)
+        index
+            .add_path(Path::new(new_rel_path))
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+        index
+            .write()
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+
+        let tree_id = index
+            .write_tree()
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+        let tree = repo
+            .find_tree(tree_id)
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+        let sig = Signature::now("AroSaina Server", "admin@arosaina.io")
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+
+        let parent_commit = match repo.head() {
+            Ok(head) => Some(
+                head.peel_to_commit()
+                    .map_err(|e| DomainError::Internal(e.to_string()))?,
+            ),
+            Err(_) => None,
+        };
+        let parents = match &parent_commit {
+            Some(c) => vec![c],
+            None => vec![],
+        };
+
+        repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+
+        debug!("Git rename commit: {} -> {}", old_rel_path, new_rel_path);
+
+        if self.bucket.is_some() {
+            let _ = self.sync_to_s3(user_path);
+        }
+
+        Ok(())
+    }
+
+    /// Stages the removal of rel_path from the index and commits.
+    /// Use this instead of commit_file for delete operations so the file is
+    /// recorded as removed rather than added/modified in the git index.
+    pub fn commit_delete(
+        &self,
+        user_path: &Path,
+        rel_path: &str,
+        message: &str,
+    ) -> Result<(), DomainError> {
+        let repo = self.init_repository(user_path)?;
+        let mut index = repo
+            .index()
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+
+        // Stage removal of the path (ignore error if it wasn't tracked yet)
+        let _ = index.remove_path(Path::new(rel_path));
+        index
+            .write()
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+
+        let tree_id = index
+            .write_tree()
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+        let tree = repo
+            .find_tree(tree_id)
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+
+        let sig = Signature::now("AroSaina Server", "admin@arosaina.io")
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+
+        let parent_commit = match repo.head() {
+            Ok(head) => Some(
+                head.peel_to_commit()
+                    .map_err(|e| DomainError::Internal(e.to_string()))?,
+            ),
+            Err(_) => None,
+        };
+        let parents = match &parent_commit {
+            Some(c) => vec![c],
+            None => vec![],
+        };
+
+        repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+
+        debug!("Git delete commit: {} for {}", message, rel_path);
 
         if self.bucket.is_some() {
             let _ = self.sync_to_s3(user_path);
@@ -76,15 +194,23 @@ impl GitService {
         rel_path: &str,
     ) -> Result<Vec<(String, i64, String)>, DomainError> {
         let repo = self.init_repository(user_path)?;
-        let mut revwalk = repo.revwalk().map_err(|e| DomainError::Internal(e.to_string()))?;
-        revwalk.set_sorting(Sort::TIME).map_err(|e| DomainError::Internal(e.to_string()))?;
-        revwalk.push_head().map_err(|e| DomainError::Internal(e.to_string()))?;
+        let mut revwalk = repo
+            .revwalk()
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+        revwalk
+            .set_sorting(Sort::TIME)
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+        revwalk
+            .push_head()
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
 
         let mut history = Vec::new();
         for oid_result in revwalk {
             let oid = oid_result.map_err(|e| DomainError::Internal(e.to_string()))?;
-            let commit = repo.find_commit(oid).map_err(|e| DomainError::Internal(e.to_string()))?;
-            
+            let commit = repo
+                .find_commit(oid)
+                .map_err(|e| DomainError::Internal(e.to_string()))?;
+
             if self.commit_affected_path(&repo, &commit, rel_path)? {
                 history.push((
                     oid.to_string(),
@@ -103,17 +229,22 @@ impl GitService {
         commit: &Commit,
         rel_path: &str,
     ) -> Result<bool, DomainError> {
-        let tree = commit.tree().map_err(|e| DomainError::Internal(e.to_string()))?;
-        
+        let tree = commit
+            .tree()
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+
         if commit.parent_count() == 0 {
             return Ok(tree.get_path(Path::new(rel_path)).is_ok());
         }
 
         for parent in commit.parents() {
-            let parent_tree = parent.tree().map_err(|e| DomainError::Internal(e.to_string()))?;
-            let diff = repo.diff_tree_to_tree(Some(&parent_tree), Some(&tree), None)
+            let parent_tree = parent
+                .tree()
                 .map_err(|e| DomainError::Internal(e.to_string()))?;
-            
+            let diff = repo
+                .diff_tree_to_tree(Some(&parent_tree), Some(&tree), None)
+                .map_err(|e| DomainError::Internal(e.to_string()))?;
+
             let mut affected = false;
             diff.foreach(
                 &mut |delta, _| {
@@ -132,7 +263,8 @@ impl GitService {
                 None,
                 None,
                 None,
-            ).map_err(|e| DomainError::Internal(e.to_string()))?;
+            )
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
 
             if affected {
                 return Ok(true);
@@ -143,12 +275,18 @@ impl GitService {
     }
 
     /// Configures the S3 remote for the repository.
-    pub fn setup_s3_remote(&self, user_path: &Path, bucket: &str, username: &str) -> Result<(), DomainError> {
+    pub fn setup_s3_remote(
+        &self,
+        user_path: &Path,
+        bucket: &str,
+        username: &str,
+    ) -> Result<(), DomainError> {
         let repo = self.init_repository(user_path)?;
         let remote_url = format!("s3://{}/git/{}", bucket, username);
-        
+
         if repo.find_remote("s3").is_err() {
-            repo.remote("s3", &remote_url).map_err(|e| DomainError::Internal(e.to_string()))?;
+            repo.remote("s3", &remote_url)
+                .map_err(|e| DomainError::Internal(e.to_string()))?;
         }
         Ok(())
     }
@@ -193,9 +331,16 @@ impl GitService {
         Ok(())
     }
 
-    pub fn find_path_at_commit(&self, repo: &Repository, commit: &Commit, blob_oid: Oid) -> Result<Option<String>, DomainError> {
-        let tree = commit.tree().map_err(|e| DomainError::Internal(e.to_string()))?;
-        
+    pub fn find_path_at_commit(
+        &self,
+        repo: &Repository,
+        commit: &Commit,
+        blob_oid: Oid,
+    ) -> Result<Option<String>, DomainError> {
+        let tree = commit
+            .tree()
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+
         let mut found_path = None;
         tree.walk(git2::TreeWalkMode::PreOrder, |root, entry| {
             if let Some(object) = entry.to_object(repo).ok() {
@@ -208,8 +353,9 @@ impl GitService {
                 }
             }
             git2::TreeWalkResult::Ok
-        }).map_err(|e| DomainError::Internal(e.to_string()))?;
-        
+        })
+        .map_err(|e| DomainError::Internal(e.to_string()))?;
+
         Ok(found_path)
     }
 
@@ -222,19 +368,33 @@ impl GitService {
     ) -> Result<(String, Vec<u8>), DomainError> {
         let repo = self.init_repository(user_path)?;
         let oid = Oid::from_str(commit_hash).map_err(|e| DomainError::Internal(e.to_string()))?;
-        let commit = repo.find_commit(oid).map_err(|e| DomainError::Internal(e.to_string()))?;
-        let tree = commit.tree().map_err(|e| DomainError::Internal(e.to_string()))?;
-        
-        let entry = tree.get_path(Path::new(rel_path))
-            .map_err(|_| DomainError::FileNotFound)?;
-        
-        let object = entry.to_object(&repo).map_err(|e| DomainError::Internal(e.to_string()))?;
-        let blob = object.as_blob().ok_or_else(|| DomainError::Internal("Not a blob".into()))?;
+        let commit = repo
+            .find_commit(oid)
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+        let tree = commit
+            .tree()
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
 
-        let historical_path = self.find_path_at_commit(&repo, &commit, blob.id())?
+        let entry = tree
+            .get_path(Path::new(rel_path))
+            .map_err(|_| DomainError::FileNotFound)?;
+
+        let object = entry
+            .to_object(&repo)
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+        let blob = object
+            .as_blob()
+            .ok_or_else(|| DomainError::Internal("Not a blob".into()))?;
+
+        let historical_path = self
+            .find_path_at_commit(&repo, &commit, blob.id())?
             .unwrap_or_else(|| rel_path.to_string());
-        
-        let historical_name = historical_path.split('/').last().unwrap_or(rel_path).to_string();
+
+        let historical_name = historical_path
+            .split('/')
+            .last()
+            .unwrap_or(rel_path)
+            .to_string();
 
         Ok((historical_name, blob.content().to_vec()))
     }
@@ -248,13 +408,18 @@ impl GitService {
     ) -> Result<String, DomainError> {
         let repo = self.init_repository(user_path)?;
         let oid = Oid::from_str(commit_hash).map_err(|e| DomainError::Internal(e.to_string()))?;
-        let commit = repo.find_commit(oid).map_err(|e| DomainError::Internal(e.to_string()))?;
-        let tree = commit.tree().map_err(|e| DomainError::Internal(e.to_string()))?;
+        let commit = repo
+            .find_commit(oid)
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
+        let tree = commit
+            .tree()
+            .map_err(|e| DomainError::Internal(e.to_string()))?;
 
         let mut opts = git2::DiffOptions::new();
         opts.pathspec(rel_path);
 
-        let diff = repo.diff_tree_to_workdir_with_index(Some(&tree), Some(&mut opts))
+        let diff = repo
+            .diff_tree_to_workdir_with_index(Some(&tree), Some(&mut opts))
             .map_err(|e| DomainError::Internal(e.to_string()))?;
 
         let mut diff_text = String::new();
@@ -272,7 +437,8 @@ impl GitService {
                 _ => {}
             }
             true
-        }).map_err(|e| DomainError::Internal(e.to_string()))?;
+        })
+        .map_err(|e| DomainError::Internal(e.to_string()))?;
 
         Ok(diff_text)
     }

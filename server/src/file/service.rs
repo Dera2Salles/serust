@@ -1,13 +1,12 @@
 use crate::common::error::DomainError;
+use crate::database::file_usecases::{FindDeletedFilesDbUseCase, FindFileByPathUseCase};
 use crate::file::compression_service::{CompressionFormat, CompressionService};
 use crate::file::git_service::GitService;
 use crate::file::interfaces::IFileRepository;
 use crate::file::{
-    DeleteUseCase, DownloadUseCase, ListUseCase, MkdirUseCase,
-    RenameUseCase, StatUseCase, UploadUseCase,
-    RestoreUseCase, PurgeUseCase,
+    DeleteUseCase, DownloadUseCase, ListUseCase, MkdirUseCase, PurgeUseCase, RenameUseCase,
+    RestoreUseCase, StatUseCase, UploadUseCase,
 };
-use crate::database::file_usecases::{FindDeletedFilesDbUseCase, FindFileByPathUseCase};
 use crate::share::service::ShareService;
 use crate::user::domain::User;
 use std::path::PathBuf;
@@ -98,17 +97,24 @@ impl FileService {
         let resolved = crate::common::permission::PermissionChecker::resolve_path(cwd, filename);
         let user_path = self.user_path(&user.username);
         let (historical_name, content) = self.git.restore_version(&user_path, &resolved, hash)?;
-        
-        let old_dir = resolved.split('/').collect::<Vec<_>>()[..resolved.split('/').count() - 1].join("/");
+
+        let old_dir =
+            resolved.split('/').collect::<Vec<_>>()[..resolved.split('/').count() - 1].join("/");
         let new_resolved = if old_dir.is_empty() {
             historical_name
         } else {
             format!("{}/{}", old_dir, historical_name)
         };
-        
-        self.file_repo.rename(&user.username, &resolved, &new_resolved).await?;
-        
-        let meta = crate::file::domain::FileMetadata::new(&new_resolved, content.len() as u64, &user.username);
+
+        self.file_repo
+            .rename(&user.username, &resolved, &new_resolved)
+            .await?;
+
+        let meta = crate::file::domain::FileMetadata::new(
+            &new_resolved,
+            content.len() as u64,
+            &user.username,
+        );
         self.file_repo.store(meta, content).await?;
 
         Ok(())
@@ -170,8 +176,11 @@ impl FileService {
         filename: &str,
         size: u64,
         data: Vec<u8>,
+        overwrite: bool,
     ) -> Result<(), DomainError> {
-        self.upload.execute(user, cwd, filename, size, data).await
+        self.upload
+            .execute(user, cwd, filename, size, data, overwrite)
+            .await
     }
 
     pub async fn list(&self, user: &User, cwd: &str) -> Result<Vec<(String, bool)>, DomainError> {
@@ -217,8 +226,11 @@ impl FileService {
         cwd: &str,
         old_name: &str,
         new_name: &str,
+        overwrite: bool,
     ) -> Result<(), DomainError> {
-        self.rename.execute(user, cwd, old_name, new_name).await
+        self.rename
+            .execute(user, cwd, old_name, new_name, overwrite)
+            .await
     }
 
     pub async fn restore(&self, user: &User, id: uuid::Uuid) -> Result<(), DomainError> {
@@ -229,14 +241,29 @@ impl FileService {
         self.purge.execute(user, id).await
     }
 
-    pub async fn list_deleted(&self, user: &User) -> Result<Vec<crate::database::domain::DbFileMetadata>, DomainError> {
-        self.find_deleted.execute(user.id).await
+    pub async fn list_deleted(
+        &self,
+        user: &User,
+    ) -> Result<Vec<crate::database::domain::DbFileMetadata>, DomainError> {
+        self.find_deleted
+            .execute(user.id)
+            .await
             .map_err(|e| DomainError::Internal(e.to_string()))
     }
 
-    pub async fn find_db_file(&self, user_id: uuid::Uuid, path: &str) -> Result<Option<crate::database::domain::DbFileMetadata>, DomainError> {
-        let storage_path = if path.starts_with('/') { path.to_string() } else { format!("/{}", path) };
-        self.find_file_by_path.execute(user_id, &storage_path).await
+    pub async fn find_db_file(
+        &self,
+        user_id: uuid::Uuid,
+        path: &str,
+    ) -> Result<Option<crate::database::domain::DbFileMetadata>, DomainError> {
+        let storage_path = if path.starts_with('/') {
+            path.to_string()
+        } else {
+            format!("/{}", path)
+        };
+        self.find_file_by_path
+            .execute(user_id, &storage_path)
+            .await
             .map_err(|e| DomainError::Internal(e.to_string()))
     }
 
@@ -251,8 +278,14 @@ impl FileService {
             return Err(DomainError::UnsafePath);
         }
 
-        if let Some((owner, inner)) = crate::common::permission::PermissionChecker::parse_shared(&resolved) {
-            if !self.shares.can_download(&user.username, &owner, &inner).await {
+        if let Some((owner, inner)) =
+            crate::common::permission::PermissionChecker::parse_shared(&resolved)
+        {
+            if !self
+                .shares
+                .can_download(&user.username, &owner, &inner)
+                .await
+            {
                 return Err(DomainError::PermissionDenied);
             }
             return self.file_repo.get_reader(&owner, &inner).await;
@@ -272,13 +305,21 @@ impl FileService {
             return Err(DomainError::UnsafePath);
         }
 
-        if let Some((owner, inner)) = crate::common::permission::PermissionChecker::parse_shared(&resolved) {
-            if !self.shares.can_download(&user.username, &owner, &inner).await {
+        if let Some((owner, inner)) =
+            crate::common::permission::PermissionChecker::parse_shared(&resolved)
+        {
+            if !self
+                .shares
+                .can_download(&user.username, &owner, &inner)
+                .await
+            {
                 return Err(DomainError::PermissionDenied);
             }
             return self.file_repo.get_presigned_url(&owner, &inner).await;
         }
 
-        self.file_repo.get_presigned_url(&user.username, &resolved).await
+        self.file_repo
+            .get_presigned_url(&user.username, &resolved)
+            .await
     }
 }

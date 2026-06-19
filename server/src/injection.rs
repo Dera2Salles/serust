@@ -169,6 +169,7 @@ pub async fn setup_injection() -> Result<Services> {
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
         Arc::clone(&share_service),
         Arc::clone(&auth_service),
+        Arc::clone(&find_file_by_path_usecase),
     ));
     let upload_usecase = Arc::new(crate::file::UploadUseCase::new(
         storage_root.clone(),
@@ -178,6 +179,7 @@ pub async fn setup_injection() -> Result<Services> {
         Arc::clone(&update_file_usecase),
         Arc::clone(&find_file_by_path_usecase),
         Arc::clone(&git_service),
+        Arc::clone(&find_user_usecase),
     ));
     let list_usecase = Arc::new(crate::file::ListUseCase::new(
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
@@ -191,6 +193,7 @@ pub async fn setup_injection() -> Result<Services> {
         Arc::clone(&share_service),
         Arc::clone(&create_file_usecase),
         Arc::clone(&find_file_by_path_usecase),
+        Arc::clone(&update_file_usecase),
         Arc::clone(&git_service),
     ));
     let delete_usecase = Arc::new(crate::file::DeleteUseCase::new(
@@ -201,6 +204,7 @@ pub async fn setup_injection() -> Result<Services> {
         Arc::clone(&create_file_usecase),
         Arc::clone(&soft_delete_db_file_usecase),
         Arc::clone(&git_service),
+        Arc::clone(&find_user_usecase),
     ));
     let stat_usecase = Arc::new(crate::file::StatUseCase::new(
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
@@ -216,9 +220,10 @@ pub async fn setup_injection() -> Result<Services> {
         Arc::clone(&update_path_prefix_db_usecase),
         Arc::clone(&git_service),
     ));
-    let restore_usecase = Arc::new(crate::file::RestoreUseCase::new(Arc::clone(
-        &restore_db_file_usecase,
-    )));
+    let restore_usecase = Arc::new(crate::file::RestoreUseCase::new(
+        Arc::clone(&find_file_usecase),
+        Arc::clone(&restore_db_file_usecase),
+    ));
     let purge_usecase = Arc::new(crate::file::PurgeUseCase::new(
         Arc::clone(&file_repo) as Arc<dyn IFileRepository>,
         Arc::clone(&find_file_usecase),
@@ -263,6 +268,7 @@ pub async fn setup_injection() -> Result<Services> {
                 None,
                 None,
                 None,
+                true, // is_active: seed users are pre-approved
             )
             .await;
         let user_path = storage_root.join(name);

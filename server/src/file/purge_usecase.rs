@@ -1,5 +1,7 @@
 use crate::common::error::DomainError;
-use crate::database::file_usecases::{DeletePermanentlyDbUseCase, FindFileUseCase, DeleteByPathPrefixDbUseCase};
+use crate::database::file_usecases::{
+    DeleteByPathPrefixDbUseCase, DeletePermanentlyDbUseCase, FindFileUseCase,
+};
 use crate::file::interfaces::IFileRepository;
 use crate::user::domain::User;
 use std::sync::Arc;
@@ -27,7 +29,10 @@ impl PurgeUseCase {
     }
 
     pub async fn execute(&self, user: &User, id: uuid::Uuid) -> Result<(), DomainError> {
-        let db_meta = self.find_db_file.execute(id).await
+        let db_meta = self
+            .find_db_file
+            .execute(id)
+            .await
             .map_err(|e| DomainError::Internal(e.to_string()))?
             .ok_or(DomainError::FileNotFound)?;
 
@@ -35,19 +40,31 @@ impl PurgeUseCase {
             return Err(DomainError::PermissionDenied);
         }
 
+        if !db_meta.is_deleted {
+            // Only files in the trash can be permanently purged
+            return Err(DomainError::PermissionDenied);
+        }
+
         let rel_path = db_meta.storage_path.trim_start_matches('/');
-        let is_dir = db_meta.mime_type.as_ref().map_or(false, |m| m.contains("directory"));
+        let is_dir = db_meta
+            .mime_type
+            .as_ref()
+            .map_or(false, |m| m.contains("directory"));
 
         if is_dir {
             self.file_repo.remove_dir(&user.username, rel_path).await?;
-            
-            self.delete_by_prefix.execute(user.id, &db_meta.storage_path).await
+
+            self.delete_by_prefix
+                .execute(user.id, &db_meta.storage_path)
+                .await
                 .map_err(|e| DomainError::Internal(e.to_string()))?;
         } else {
             self.file_repo.delete_file(&user.username, rel_path).await?;
         }
 
-        self.delete_db_file.execute(id).await
+        self.delete_db_file
+            .execute(id)
+            .await
             .map_err(|e| DomainError::Internal(e.to_string()))?;
 
         Ok(())

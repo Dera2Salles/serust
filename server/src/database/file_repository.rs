@@ -1,5 +1,5 @@
 use crate::database::domain::DbFileMetadata;
-use crate::database::entities::{prelude::*, files};
+use crate::database::entities::{files, prelude::*};
 use crate::database::interfaces::IFileDatabaseRepository;
 use crate::database::Database;
 use anyhow::Result;
@@ -49,7 +49,9 @@ impl IFileDatabaseRepository for FileRepository {
             is_deleted: Set(file.is_deleted),
         };
 
-        Files::insert(active_model).exec(&self.db.connection).await?;
+        Files::insert(active_model)
+            .exec(&self.db.connection)
+            .await?;
         Ok(())
     }
 
@@ -61,7 +63,11 @@ impl IFileDatabaseRepository for FileRepository {
         Ok(model.map(Self::model_to_metadata))
     }
 
-    async fn find_by_storage_path(&self, owner_id: Uuid, path: &str) -> Result<Option<DbFileMetadata>> {
+    async fn find_by_storage_path(
+        &self,
+        owner_id: Uuid,
+        path: &str,
+    ) -> Result<Option<DbFileMetadata>> {
         let model = Files::find()
             .filter(files::Column::OwnerId.eq(owner_id.to_string()))
             .filter(files::Column::StoragePath.eq(path))
@@ -81,6 +87,7 @@ impl IFileDatabaseRepository for FileRepository {
             active_model.size_bytes = Set(file.size_bytes);
             active_model.checksum = Set(file.checksum.clone());
             active_model.updated_at = Set(file.updated_at.into());
+            active_model.is_deleted = Set(file.is_deleted);
             active_model.update(&self.db.connection).await?;
         }
         Ok(())
@@ -146,7 +153,11 @@ impl IFileDatabaseRepository for FileRepository {
         Ok(())
     }
 
-    async fn find_by_parent_path(&self, owner_id: Uuid, parent_path: &str) -> Result<Vec<DbFileMetadata>> {
+    async fn find_by_parent_path(
+        &self,
+        owner_id: Uuid,
+        parent_path: &str,
+    ) -> Result<Vec<DbFileMetadata>> {
         let prefix = if parent_path.ends_with('/') {
             parent_path.to_string()
         } else {
@@ -156,9 +167,9 @@ impl IFileDatabaseRepository for FileRepository {
 
         let models = files::Model::find_by_statement(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            r#"SELECT * FROM files 
-               WHERE owner_id = $1 
-               AND storage_path LIKE $2 
+            r#"SELECT * FROM files
+               WHERE owner_id = $1
+               AND storage_path LIKE $2
                AND position('/' in substring(storage_path from length($3) + 1)) = 0"#,
             vec![owner_id.to_string().into(), pattern.into(), prefix.into()],
         ))
@@ -188,25 +199,33 @@ impl IFileDatabaseRepository for FileRepository {
         Ok(())
     }
 
-    async fn update_path_prefix(&self, owner_id: Uuid, old_prefix: &str, new_prefix: &str) -> Result<()> {
+    async fn update_path_prefix(
+        &self,
+        owner_id: Uuid,
+        old_prefix: &str,
+        new_prefix: &str,
+    ) -> Result<()> {
         let pattern = if old_prefix.ends_with('/') {
             format!("{}%", old_prefix)
         } else {
             format!("{}/%", old_prefix)
         };
 
-        self.db.connection.execute(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"UPDATE files 
+        self.db
+            .connection
+            .execute(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"UPDATE files
                SET storage_path = $1 || substring(storage_path from length($2) + 1)
                WHERE owner_id = $3 AND storage_path LIKE $4"#,
-            vec![
-                new_prefix.into(),
-                old_prefix.into(),
-                owner_id.to_string().into(),
-                pattern.into(),
-            ],
-        )).await?;
+                vec![
+                    new_prefix.into(),
+                    old_prefix.into(),
+                    owner_id.to_string().into(),
+                    pattern.into(),
+                ],
+            ))
+            .await?;
 
         Ok(())
     }

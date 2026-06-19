@@ -18,6 +18,7 @@ pub struct DownloadUseCase {
     file_repo: Arc<dyn IFileRepository>,
     shares: Arc<ShareService>,
     auth: Arc<AuthService>,
+    find_db_file: Arc<crate::database::file_usecases::FindFileByPathUseCase>,
 }
 
 impl DownloadUseCase {
@@ -25,11 +26,13 @@ impl DownloadUseCase {
         file_repo: Arc<dyn IFileRepository>,
         shares: Arc<ShareService>,
         auth: Arc<AuthService>,
+        find_db_file: Arc<crate::database::file_usecases::FindFileByPathUseCase>,
     ) -> Self {
         Self {
             file_repo,
             shares,
             auth,
+            find_db_file,
         }
     }
 
@@ -89,7 +92,14 @@ impl DownloadUseCase {
 
             self.file_repo.load(&owner, &inner).await?
         } else {
-            let _storage_path = format!("/{}", resolved);
+            let storage_path = format!("/{}", resolved);
+
+            // Check DB: file must not be soft-deleted
+            if let Ok(Some(db_meta)) = self.find_db_file.execute(user.id, &storage_path).await {
+                if db_meta.is_deleted {
+                    return Err(DomainError::FileNotFound);
+                }
+            }
 
             let meta = self
                 .file_repo
